@@ -1,0 +1,13 @@
+{
+  "name": "maxclicks",
+  "version": "1.0.0",
+  "description": "Agent Skills and agents for building on maxclicks: manage contacts and objects, fire events, send email and templates, build and trigger workflows, and manage webhooks, using the maxclicks API, CLI, SDKs, and docs.",
+  "author": {
+    "name": "maxclicks",
+    "email": "info@maxclicks.ai",
+    "url": "https://maxclicks.ai"
+  },
+  "homepage": "https://github.com/maxclicks-ai/maxclicks-ai",
+  "license": "MIT",
+  "keywords": ["maxclicks", "crm", "email", "marketing", "automation", "skills"]
+}

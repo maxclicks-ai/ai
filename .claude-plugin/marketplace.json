@@ -1,0 +1,18 @@
+{
+  "name": "maxclicks",
+  "owner": {
+    "name": "maxclicks",
+    "email": "info@maxclicks.ai"
+  },
+  "plugins": [
+    {
+      "name": "maxclicks",
+      "source": "./",
+      "description": "Agent Skills and agents for building on the maxclicks email, CRM, and automation platform.",
+      "version": "1.0.0",
+      "author": {
+        "name": "maxclicks"
+      }
+    }
+  ]
+}

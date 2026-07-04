@@ -1,0 +1,38 @@
+{
+  "name": "@maxclicks/ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The one-stop shop for building on maxclicks with AI agents: Agent Skills, agents, and plugins for Claude Code, Cursor, Codex, and Gemini CLI.",
+  "type": "module",
+  "scripts": {
+    "validate": "node scripts/validate-skills.mjs",
+    "build:index": "node scripts/build-index.mjs",
+    "check": "node scripts/validate-skills.mjs && node scripts/build-index.mjs --check"
+  },
+  "keywords": [
+    "maxclicks",
+    "agent-skills",
+    "skills",
+    "ai",
+    "claude",
+    "cursor",
+    "codex",
+    "gemini",
+    "crm",
+    "email",
+    "automation"
+  ],
+  "author": "maxclicks",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maxclicks-ai/maxclicks-ai"
+  },
+  "homepage": "https://github.com/maxclicks-ai/maxclicks-ai#readme",
+  "bugs": {
+    "url": "https://github.com/maxclicks-ai/maxclicks-ai/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "skills": [
+    {
+      "name": "maxclicks",
+      "description": "Work with the maxclicks email, CRM, and automation platform: manage contacts, objects, and records; fire events; send emails and templates; build and trigger workflows; manage webhooks and suppressions; or build a maxclicks integration in any language. Use whenever a task mentions maxclicks, or involves its API, CLI, SDKs (Node, Python, Go, PHP/Laravel, Ruby, Java, Rust), or MCP server.",
+      "files": [
+        "SKILL.md",
+        "references/api-reference.md",
+        "references/gotchas.md",
+        "references/sdks.md"
+      ]
+    },
+    {
+      "name": "maxclicks-contacts",
+      "description": "Create, import, update, search, or delete contacts, customers, users, or business objects (records) in maxclicks. Use for CRM/contact-list operations against the maxclicks API, CLI, or SDKs.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-email",
+      "description": "Send an email or a stored template to a contact through maxclicks. Use when a task involves sending transactional or marketing email, template sends, or email suppression via the maxclicks API, CLI, or SDKs.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-events",
+      "description": "Track or fire events (purchase completed, signup, cart abandoned, etc.) into maxclicks to trigger workflows and webhooks. Use when instrumenting an app or backfilling events via the maxclicks API, CLI, or SDKs.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-webhooks",
+      "description": "Create, list, update, delete, or rotate maxclicks outgoing webhooks, and verify inbound webhook signatures. Use when wiring maxclicks events to an external endpoint or handling maxclicks webhook deliveries.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-workflows",
+      "description": "Start or trigger a maxclicks workflow / automation via its incoming-webhook step. Use when a task needs to kick off a maxclicks workflow with a payload from an external system.",
+      "files": [
+        "SKILL.md"
+      ]
+    }
+  ]
+}
