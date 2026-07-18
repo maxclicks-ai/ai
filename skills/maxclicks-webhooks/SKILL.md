@@ -13,16 +13,16 @@ A webhook needs a `url`, a `trigger`, and (for every trigger except `email event
 
 - `url` (required): the HTTPS endpoint maxclicks POSTs to.
 - `trigger` (required), exactly one of: `contact upserted`, `contact deleted`, `object upserted`, `object deleted`, `event fired`, `email event`.
-- `schemaId`: **required for every trigger except `email event`**; it is the schema id (not slug), so resolve it first with `maxclicks schemas list`.
+- `schemaId`: **required for every trigger except `email event`**; accepts a schema id or slug (resolve one with `maxclicks schemas list` if you only have the name).
 - `emailEventTypes` (array): required, and only used, when `trigger` is `email event` (e.g. `bounce`, `complaint`, `delivery`, `open`, `click`).
-- `condition`: `{ "type": "none" }` (default) or `{ "type": "segment", "segmentId": "<id>" }`. Custom AI-filter conditions are app-only and cannot be set through this API.
+- `condition`: one of `{ "type": "none" }` (default), `{ "type": "segment", "segmentId": "<id>" }` (see `maxclicks-segments` for creating one), or `{ "type": "custom filter", "requirements": "<plain-English filter>" }`. The third form is AI-generated server-side, same contract as segments; see the `maxclicks` skill's `references/requirements.md` for how to phrase it. The generated check expression is never returned; on `get`/`list` a custom filter reduces to `{ "type": "custom filter", "description": "<human-readable summary>" }`.
 
 The response includes `signatureVerificationSecret`. **This secret is returned on create and rotate ONLY**, never by `get` or `list`. Save it immediately (into your endpoint's env/secret store): you will need it to verify deliveries, and losing it means rotating.
 
 ### CLI
 
 ```bash
-# Resolve the schema id first (schemaId wants an id, not a slug)
+# schemaId accepts an id or a slug; list to find one either way
 maxclicks schemas list --type contact
 
 # Create a contact-upserted webhook filtered to one segment
@@ -38,6 +38,17 @@ maxclicks webhooks create --data '{
   "url": "https://example.com/hooks/maxclicks",
   "trigger": "email event",
   "emailEventTypes": ["bounce", "complaint"]
+}'
+
+# A natural-language custom filter instead of a segment
+maxclicks webhooks create --data '{
+  "url": "https://example.com/hooks/maxclicks",
+  "trigger": "contact upserted",
+  "schemaId": "sch_01hx...",
+  "condition": {
+    "type": "custom filter",
+    "requirements": "Only contacts whose plan attribute changed to premium in this update."
+  }
 }'
 ```
 
@@ -93,8 +104,8 @@ Verify against the **raw** request body bytes (do not re-serialize the parsed JS
 ## Gotchas
 
 - **The signing secret is shown once,** on `create` and `rotate-secret` only. `get`/`list` never return it. Save it on receipt; if lost, `rotate-secret` and re-store.
-- **`schemaId` is required for every trigger except `email event`,** and it is a schema **id**, not a slug. `emailEventTypes` is required and used only for `trigger: email event`.
-- **Only `{ type: "none" }` or `{ type: "segment", segmentId }` conditions** are accepted by the API. Custom AI-filter conditions exist only in the app.
+- **`schemaId` is required for every trigger except `email event`,** and accepts a schema id or slug. `emailEventTypes` is required and used only for `trigger: email event`.
+- **A third condition type exists: `{ type: "custom filter", requirements }`.** It is AI-generated server-side from a natural-language description, rate-limited on the AI bucket, and the generated code is never returned (`get`/`list` show `{ type: "custom filter", description }` instead). See the `maxclicks` skill's `references/requirements.md`.
 - **Integration-owned webhooks** (those with a non-null `integrationVendorName`) cannot be updated, deleted, or rotated through the API: you get a 403 (`webhook_integration_owned`). Only the owning integration can change them.
 - **Segment conditions apply to contact triggers;** a `segmentId` must belong to the same contact schema the webhook watches.
 - **`rotate-secret` invalidates the old secret immediately.** Roll it out to your endpoint atomically to avoid a window of failed verifications.

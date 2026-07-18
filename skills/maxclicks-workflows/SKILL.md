@@ -10,7 +10,8 @@ Builds on the `maxclicks` skill (read that first for auth, tool choice, and the 
 ## What you can and cannot do here
 
 - **You CAN start a run** of an already-built workflow by posting a payload to its incoming-webhook step reference.
-- **You CANNOT build or configure workflows through this API.** There are no create-workflow, add-step, or edit-step commands. Steps, the JSON schema the payload is validated against, and the reference id are all set up by the user in the maxclicks app (`https://app.maxclicks.ai`). If the workflow or an incoming-webhook step does not exist yet, tell the user to add it in the app.
+- **You CAN list and observe workflows and their runs, and pause/unpause/remove a workflow** (full CLI commands, see "Observability and lifecycle" below), but this is read/lifecycle-only, not step editing.
+- **You CANNOT build or configure workflow steps through this API.** There are no create-workflow, add-step, or edit-step commands. Steps, the JSON schema the payload is validated against, and the reference id are all set up by the user in the maxclicks app (`https://app.maxclicks.ai`). If the workflow or an incoming-webhook step does not exist yet, tell the user to add it in the app.
 
 ## The procedure
 
@@ -71,11 +72,27 @@ except MaxclicksError as e:
 maxclicks api POST /workflows/onboarding-signup --data '{"email":"ada@example.com"}'
 ```
 
+## Observability and lifecycle
+
+List/get workflows and their runs, and pause, unpause, or remove a workflow. Full CLI commands (not yet wrapped by any SDK, use a raw HTTP call from application code):
+
+```bash
+maxclicks workflows list --all
+maxclicks workflows get wf_01hx...
+maxclicks workflows runs wf_01hx... --all
+maxclicks workflows get-run wf_01hx... run_01hx...
+maxclicks workflows pause wf_01hx...
+maxclicks workflows unpause wf_01hx...
+maxclicks workflows delete wf_01hx...
+```
+
+This is how you now confirm a trigger actually did something, list runs for the workflow and inspect the run's status, instead of relying only on side effects or the app's run history. Pausing stops the workflow from starting new runs (runs already in progress continue); it does not touch steps or the trigger endpoint's validation.
+
 ## Gotchas
 
-- **The trigger only starts a run; it does not return it.** There is no run id, status, or output in the response (success is an empty body). To observe what the run did, look at its side effects (records upserted, events, emails) or the workflow run history in the app, not this call's return value.
+- **The trigger only starts a run; it does not return it.** There is no run id, status, or output in the trigger response itself (success is an empty body). Use `maxclicks workflows runs <id>` (above) to find and inspect the run afterward, rather than assuming the trigger call tells you anything beyond "accepted."
 - **The `<reference>` comes from the app, not from the API.** It is the incoming-webhook step's reference id set in the workflow editor. Nothing here lists references; if you do not have it, ask the user.
 - **The payload is validated against the step's JSON schema.** A field the schema does not allow, or a missing required field, is rejected with a validation error. Match the schema the user configured; do not assume a contact/record shape.
 - **Raw-endpoint errors can be `text/plain`, not the JSON error envelope.** The CLI and SDKs normalize this for you; only worry about it if you call `maxclicks api` / the HTTP endpoint directly and parse the failure body yourself.
-- **A successful trigger does not mean the workflow succeeded.** It means the run was accepted and started. Downstream steps run asynchronously and can still fail without affecting this call's result.
-- **Configuration is app-only.** Building the workflow, wiring steps, and defining the incoming-webhook schema all happen in the maxclicks app. This API cannot do any of it.
+- **A successful trigger does not mean the workflow succeeded.** It means the run was accepted and started. Downstream steps run asynchronously and can still fail; check the run via the observability endpoints above rather than assuming success from the trigger's 2xx.
+- **Step-level configuration is app-only.** Building the workflow and wiring/editing steps happen in the maxclicks app; this API cannot do that. Listing, observing runs, pausing/unpausing, and removing a whole workflow are the only lifecycle operations available here.

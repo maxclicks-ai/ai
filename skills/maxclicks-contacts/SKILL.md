@@ -11,7 +11,7 @@ Contacts and objects are both **records** under a schema. Contacts (a contact sc
 
 ## Step 1: Discover the schema and its attributes (always first)
 
-You cannot create schemas or attributes through this API, and **undefined attribute keys are silently dropped** (returned as a `warnings` entry, not an error). So learn the real keys before writing.
+Schemas and attributes do have write commands now (`maxclicks schemas create|update|delete`, `maxclicks attributes create`, see the `maxclicks` skill's "Managing schemas, attributes, and API keys" section), but creating one is a deliberate schema-design action, not a shortcut for a missing key. And **undefined attribute keys on a record write are silently dropped** (returned as a `warnings` entry, not an error). So learn the real keys before writing.
 
 ```bash
 maxclicks whoami                          # confirm the bound space
@@ -39,6 +39,9 @@ maxclicks records upsert products --data '{"externalId":"sku_42","name":"Deluxe 
 
 # Strict create (use only when you require insert-or-fail)
 maxclicks records create students --data '{"email":"grace@example.com"}'
+
+# Both create and upsert accept --idempotency-key for safe retries (replays the original record):
+maxclicks records upsert students --data '{"email":"ada@example.com"}' --idempotency-key "signup-ada-2026-07-18"
 ```
 
 The **identity cascade** decides which existing record an upsert matches:
@@ -73,9 +76,9 @@ maxclicks records delete students <recordId>
 
 `update` targets a known record id and patches it; omit a key to leave it unchanged, send explicit `null` to clear a nullable field. There is no server-side text search endpoint: to find a record by email, upsert (idempotent) or `list --all` and filter client-side.
 
-## Bulk import (loop and upsert each)
+## Bulk import
 
-There is no records batch endpoint. Import by iterating your source array and upserting each row. Upsert is idempotent, so a re-run of a partially-failed import is safe.
+For a handful of records, loop-and-upsert is simplest (upsert is idempotent, so a re-run of a partially-failed batch is safe):
 
 ```ts
 import { Maxclicks } from 'maxclicks'
@@ -96,8 +99,6 @@ for (const row of rows) {
 }
 ```
 
-Python:
-
 ```python
 from maxclicks import Maxclicks
 mc = Maxclicks()  # reads MAXCLICKS_API_KEY
@@ -105,12 +106,28 @@ for row in rows:
     mc.records.upsert("students", row)
 ```
 
-Bash loop:
-
 ```bash
 jq -c '.[]' contacts.json | while read -r row; do
   maxclicks records upsert students --data "$row"
 done
+```
+
+**For a real CSV bulk load, use `maxclicks imports` instead**, a full CLI command group now (see the `maxclicks-imports` skill for the complete flow):
+
+```bash
+# 1. Upload the CSV somewhere reachable, then submit its URL (fileUrl and byteSize are both required;
+#    contact/object schemas only, files over 50 MB are rejected):
+maxclicks imports create students --data '{"fileUrl":"https://your-storage.example.com/contacts.csv","byteSize":48213}'
+# -> { "id": "imp_...", "status": "pending", ... }
+
+# 2. Poll status:
+maxclicks imports get imp_...
+
+# 3. On partial failure, download the per-row failure log (authenticated, streamed to stdout):
+maxclicks imports download-failure-log imp_... > failures.csv
+
+# 4. Cancel a running import if needed:
+maxclicks imports cancel imp_...
 ```
 
 ## Read a contact's consent audit trail (contacts only)
@@ -122,11 +139,23 @@ maxclicks records audit-trail students <contactId> --channel email
 
 Returns consent events (subscribed, unsubscribed, topic changes) for legal compliance. Objects have no audit trail.
 
+## Suppression list, get, and batch operations
+
+`maxclicks suppressions create`/`delete` (admin key) are already covered in the `maxclicks-email` skill. Listing, getting, and batch create/remove are also full CLI commands now:
+
+```bash
+maxclicks suppressions list --all
+maxclicks suppressions list --identifier ada@example.com
+maxclicks suppressions get supp_abc123
+maxclicks suppressions batch-add --data '{"suppressions":[{"identifier":"a@example.com","reason":"manual"},{"identifier":"b@example.com","reason":"legal"}]}'
+maxclicks suppressions batch-remove --data '{"ids":["supp_1","supp_2"]}'
+```
+
 ## Gotchas
 
 - **Discover before you write.** Undefined attribute keys are dropped and surfaced only as a `warnings` entry; the write otherwise "succeeds". Run `attributes list <schema>` first and read `warnings` on every write.
 - **Records are flat.** No `data`/`attributes`/`properties` wrapper. Custom keys sit beside base fields.
-- **Cannot create schemas or attributes** from the API/CLI/SDK. If a needed attribute is missing, tell the user to add it in the maxclicks app; do not build a workaround.
+- **Schemas and attributes can be created via the CLI** (`maxclicks schemas create|update|delete`, `maxclicks attributes create`). If a needed attribute is missing, either create it (stored, or evaluated via NL `--requirements`, see the `maxclicks` skill's `references/requirements.md`) or tell the user to add it in the app, whichever fits the task.
 - **`source`, `subscriptions`, and `emailStatistics` are read-only.** They are managed by the platform and cannot be set through these endpoints (use `topicIds` and the preferences/consent flows, not `subscriptions`, to change contactability).
 - **Upsert merges by identity; conflicting identifier updates are skipped, not failed**, and reported in `warnings`. Prefer `upsert` over `create` for idempotent imports.
 - **`null` means clear.** In `update`/`upsert`, an explicit `null` clears a nullable field; omitting the key leaves it unchanged.

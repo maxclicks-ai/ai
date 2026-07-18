@@ -2,6 +2,8 @@
 
 First-class, hand-written SDKs per language. All share the same surface: a client, resource groups (`me`, `schemas`, `attributes`, `records`, `events`, `templates`, `webhooks`, `suppressions`, `workflows`, `forms`, `emails`), typed errors, `Retry-After`-aware retries, and auto-pagination. The key comes from the client argument or `MAXCLICKS_API_KEY`. Use the SDK for the project's language; do not shell out to the CLI from application code.
 
+**Coverage note (SDK lag, read before writing app code):** the Public API v1 has grown to 18 resource groups (~88 endpoints; see `references/api-reference.md`), and the **`maxclicks` CLI now wraps all of them**. These **SDKs still only wrap the groups listed above, at their original operation set** (e.g. `schemas`/`attributes` are read-only in the SDK even though the API itself now has write endpoints). The newer groups, schema/attribute writes, `segments`, `broadcasts`, template authoring (`templates.create/update/remove/duplicate`, as opposed to the already-wrapped `templates.send`), `domains`, `senders`, `topics`, `imports`, and `api-keys`, are **not yet wrapped by any SDK**. Do not invent a method name for these; reach them with a plain HTTP call in the project's language (same base URL, same `Bearer <api_key>` header, same JSON envelope described in `references/api-reference.md`) until the SDKs are regenerated against the full surface. Check the installed package's actual exports/changelog before assuming a method exists. From a terminal (not application code), the CLI already covers all of these, see the task skills: `maxclicks-segments`, `maxclicks-broadcasts`, `maxclicks-templates`, `maxclicks-deliverability`, `maxclicks-topics`, `maxclicks-imports`.
+
 ## Node / TypeScript (`maxclicks`, npm)
 
 ```ts

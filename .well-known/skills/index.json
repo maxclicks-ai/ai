@@ -2,17 +2,45 @@
   "skills": [
     {
       "name": "maxclicks",
-      "description": "Work with the maxclicks email, CRM, and automation platform: manage contacts, objects, and records; fire events; send emails and templates; build and trigger workflows; manage webhooks and suppressions; or build a maxclicks integration in any language. Use whenever a task mentions maxclicks, or involves its API, CLI, SDKs (Node, Python, Go, PHP/Laravel, Ruby, Java, Rust), or MCP server.",
+      "description": "Work with the maxclicks email, CRM, and automation platform: manage contacts, objects, and records; define schemas and attributes (including AI-generated evaluated attributes); fire events; send emails, author and send templates; build segments and broadcasts with natural-language filters; build and trigger workflows; manage webhooks, domains, senders, topics, imports, API keys, and suppressions; or build a maxclicks integration in any language. Use whenever a task mentions maxclicks, or involves its API, CLI (`maxclicks`), SDKs (Node, Python, Go, PHP/Laravel, Ruby, Java, Rust), or MCP server.",
       "files": [
         "SKILL.md",
         "references/api-reference.md",
         "references/gotchas.md",
+        "references/requirements.md",
         "references/sdks.md"
+      ]
+    },
+    {
+      "name": "maxclicks-adaptyle",
+      "description": "Write or edit the CONTENT of a maxclicks email template: the subject and body in Adaptyle, maxclicks's LLM-enhanced templating language layered over Liquid. Use whenever a task asks to write, draft, generate, or edit an email template's subject/body, an MJML or HTML raw template, an Adaptyle prompt tag, manifest, or hidden block, or to personalize email copy with AI at send time.",
+      "files": [
+        "SKILL.md",
+        "references/authoring-and-sending.md",
+        "references/examples.md",
+        "references/liquid-and-data.md",
+        "references/mjml-and-html.md",
+        "references/pitfalls.md",
+        "references/syntax-cheatsheet.md"
+      ]
+    },
+    {
+      "name": "maxclicks-broadcasts",
+      "description": "Create, schedule, or send a maxclicks broadcast, a one-time mass email to a contact-schema audience (everyone, a segment, or an AI-generated custom filter). Use for newsletters, promos, or any \"email this whole audience\" task.",
+      "files": [
+        "SKILL.md"
       ]
     },
     {
       "name": "maxclicks-contacts",
       "description": "Create, import, update, search, or delete contacts, customers, users, or business objects (records) in maxclicks. Use for CRM/contact-list operations against the maxclicks API, CLI, or SDKs.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-deliverability",
+      "description": "Add and verify a sending domain, or create a saved sender profile, in maxclicks. Use before sending any email from a new domain, when DNS/SPF/DKIM/DMARC setup is needed, or when a template/broadcast needs a \"from\" address.",
       "files": [
         "SKILL.md"
       ]
@@ -27,6 +55,34 @@
     {
       "name": "maxclicks-events",
       "description": "Track or fire events (purchase completed, signup, cart abandoned, etc.) into maxclicks to trigger workflows and webhooks. Use when instrumenting an app or backfilling events via the maxclicks API, CLI, or SDKs.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-imports",
+      "description": "Bulk-import contacts or objects into maxclicks from a CSV file, poll import status, and download the per-row failure log. Use for real bulk loads (hundreds+ rows), not one-off record writes.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-segments",
+      "description": "Create, list, count, or update maxclicks segments, AI-generated contact filters defined by a natural-language prompt. Use for audience definitions, saved filters, or \"contacts where...\" style queries against the maxclicks API or CLI.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-templates",
+      "description": "Create, list, get, update, duplicate, or delete a reusable maxclicks email template (the authoring CRUD, separate from sending). Use when a task needs to define a template's data shape, recipient, sender, or metadata, not just send an existing one.",
+      "files": [
+        "SKILL.md"
+      ]
+    },
+    {
+      "name": "maxclicks-topics",
+      "description": "Create, list, update, or delete a maxclicks communication topic (e.g. \"Marketing\", \"Product Updates\"), the consent-scoped grouping for marketing sends. Use when wiring a template's or broadcast's communicationTopicId, or building a preference center.",
       "files": [
         "SKILL.md"
       ]

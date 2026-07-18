@@ -19,7 +19,7 @@ An event is a meaningful, actionable thing that happened (a purchase completed, 
    maxclicks attributes list purchase-completed       # learn the payload keys
    ```
 
-   Event schemas and attributes are read-only through the API. If a needed attribute does not exist, tell the user to add it in the maxclicks app; there is no create-schema or create-attribute command.
+   Event schema and attribute writes exist (`maxclicks schemas create|update|delete`, `maxclicks attributes create`), but this is not something to reach for mid-instrumentation. If a needed attribute does not exist, either create it deliberately or tell the user to add it in the app; either way, discover first.
 3. **Fire.** The payload is **flat**, keyed by the schema's attribute keys, plus two optional reserved keys: `eventId` (dedup) and `occurredAt` (when it happened, defaults to now). Prefer `fire-batch` for backfills.
 
 ## Fire one event (CLI)
@@ -53,6 +53,17 @@ maxclicks events fire-batch purchase-completed --on-error abort --data '[
 ```
 
 With `--on-error abort`, a first invalid item comes back as **HTTP 422** carrying `{ results, summary, failedIndex }`. That 422 is a normal result to read (fix `failedIndex` and re-fire), not a transient error to retry.
+
+## List events
+
+`maxclicks events list --schema <schema>` lists fired events for **one event schema per call** (`--schema` is required, id or slug), cursor-paginated (`--cursor`, following `pagination.nextCursor`, not the `limit`/`offset`/`totalCount` envelope the other list commands use). Reads through the ClickHouse-backed archive, so it sees every event ever fired, not just ones that triggered a workflow/webhook. Not yet wrapped by any SDK, use the CLI or a raw HTTP call from application code:
+
+```bash
+maxclicks events list --schema purchase-completed --all
+maxclicks events list --schema purchase-completed --from 2026-07-01T00:00:00Z --to 2026-07-18T00:00:00Z
+```
+
+If `--from` is omitted it defaults to the **last 7 days** before `--to` (which defaults to now), not 90; a requested span wider than 90 days is silently clamped (with a `warnings` entry, not rejected). For a single known event, `events get <id>` (already CLI/SDK-wrapped) remains the simpler call.
 
 ## Instrument a backend action (TypeScript SDK)
 
@@ -102,4 +113,5 @@ Python is identical in shape: `mc.events.fire("purchase-completed", {"eventId": 
 - **`eventId` deduplicates.** Re-firing with the same `eventId` on the same schema is deduped, which is why it is safe to retry a failed send. Use a real, stable business id (order id, signup id), not a random UUID per attempt.
 - **`--on-error abort` returns HTTP 422 as a result.** The SDKs surface it as a value with `failedIndex`; the CLI prints the body. Do not retry it blindly.
 - **Events are meaningful, not analytics.** Fire `cart-abandoned`, not `page-viewed`. High-volume streams belong in a real analytics pipeline.
-- **You cannot create event schemas or attributes here.** They are read-only through the API/CLI/SDK; the user adds them in the maxclicks app.
+- **Event schemas and attributes can be created via the CLI** (`maxclicks schemas create|update|delete`, `maxclicks attributes create`). Reach for it deliberately, not as a quick fix for one missing key mid-instrumentation.
+- **`events list` requires `--schema`** and defaults to a 7-day lookback, not the 90-day maximum it silently clamps to; pass explicit `--from`/`--to` for anything else, and remember it is cursor-paginated (`--cursor`), not offset-paginated like the other list commands.

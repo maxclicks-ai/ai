@@ -2,7 +2,7 @@
 
 The one-stop shop for building on [maxclicks](https://maxclicks.ai) with AI agents. This repo ships **Agent Skills** and **agents** that teach any skills-compatible coding agent (Claude Code, Cursor, Codex, Gemini CLI, and more) to work with the maxclicks API, SDKs, CLI, and docs, using the latest best practices.
 
-Install one skill and your agent can manage contacts, fire events, send email, build and trigger workflows, and wire webhooks against your maxclicks space, correctly and safely.
+Install one skill and your agent can manage contacts, fire events, send email, author email content in Adaptyle, build segments and broadcasts with natural-language filters, build and trigger workflows, and wire webhooks against your maxclicks space, correctly and safely. The `maxclicks` CLI now wraps the full Public API v1 surface (schemas/attributes writes, segments, broadcasts, template authoring, domains, senders, topics, imports, API keys, and more); the SDKs are still catching up on the newer domains (see the `maxclicks` skill's `references/api-reference.md` and `references/sdks.md`).
 
 ## Install
 
@@ -41,11 +41,18 @@ Clone this repo and copy the `skills/` folders into your agent's skills director
 
 | Skill | Use it when |
 | --- | --- |
-| `maxclicks` | The entry point: auth, the schema-based data model, the CLI/SDK/API map, and the top gotchas. Loads on any maxclicks task. |
+| `maxclicks` | The entry point: auth, the schema-based data model, the full CLI/SDK/API map, schema/attribute/API-key management, and the top gotchas. Loads on any maxclicks task. |
 | `maxclicks-contacts` | Creating, importing, updating, or deleting contacts and objects (records). |
-| `maxclicks-events` | Firing events to trigger automations. |
+| `maxclicks-events` | Firing and listing events to trigger automations. |
 | `maxclicks-email` | Sending templates and managing email suppressions. |
-| `maxclicks-workflows` | Triggering workflows through their incoming-webhook step. |
+| `maxclicks-templates` | Authoring a template's CRUD shell: create/list/get/update/duplicate/delete, data representation, recipient path, sender. |
+| `maxclicks-adaptyle` | Writing or editing an email template's content: Adaptyle's manifest/prompt/hidden-block syntax over Liquid, MJML/HTML raw bodies. |
+| `maxclicks-segments` | Building AI-generated contact filters from a natural-language prompt. |
+| `maxclicks-broadcasts` | Creating, scheduling, and sending mass emails to a segment or the whole audience. |
+| `maxclicks-deliverability` | Adding and verifying sending domains, and managing saved sender profiles. |
+| `maxclicks-topics` | Managing communication topics for consent-scoped marketing sends. |
+| `maxclicks-imports` | Bulk-importing contacts or objects from a CSV file. |
+| `maxclicks-workflows` | Triggering workflows through their incoming-webhook step, and observing runs. |
 | `maxclicks-webhooks` | Creating and managing outgoing webhooks, and verifying inbound signatures. |
 
 Each skill is grounded in the real maxclicks surface (no invented endpoints) and follows the [Agent Skills](https://agentskills.io) open standard, so it works across skills-compatible agents.
