@@ -19,7 +19,7 @@ An event is a meaningful, actionable thing that happened (a purchase completed, 
    maxclicks attributes list purchase-completed       # learn the payload keys
    ```
 
-   Event schema and attribute writes exist (`maxclicks schemas create|update|delete`, `maxclicks attributes create`), but this is not something to reach for mid-instrumentation. If a needed attribute does not exist, either create it deliberately or tell the user to add it in the app; either way, discover first.
+   Event schemas and their attributes are **designed in the app** and read-only over the API (`schemas list|get`, `attributes list`). That is the right shape for instrumentation anyway: the payload contract should be settled before code starts firing against it, and there is no schema-migration system to correct a key invented mid-integration. If a needed attribute does not exist, ask the user to add it in the app, then re-run `attributes list` and fire.
 3. **Fire.** The payload is **flat**, keyed by the schema's attribute keys, plus two optional reserved keys: `eventId` (dedup) and `occurredAt` (when it happened, defaults to now). Prefer `fire-batch` for backfills.
 
 ## Fire one event (CLI)
@@ -35,11 +35,7 @@ maxclicks events fire purchase-completed --data '{
 # -> { "accepted": 1 }
 ```
 
-`fire` returns `{ "accepted": n }`, not the stored event. Retrieve a fired event later by its returned id:
-
-```bash
-maxclicks events get evt_01J2K...
-```
+`fire` returns `{ "accepted": n }`, not the stored event, and there is no fetch-one-event call: an event is an immutable fact in a stream, so it is read back through `events list` (below), filtered by schema and time range. Nothing you can do to an event after firing it changes it; to correct a mistake, fire the corrected event.
 
 ## Fire a batch (CLI)
 
@@ -56,14 +52,21 @@ With `--on-error abort`, a first invalid item comes back as **HTTP 422** carryin
 
 ## List events
 
-`maxclicks events list --schema <schema>` lists fired events for **one event schema per call** (`--schema` is required, id or slug), cursor-paginated (`--cursor`, following `pagination.nextCursor`, not the `limit`/`offset`/`totalCount` envelope the other list commands use). Reads through the ClickHouse-backed archive, so it sees every event ever fired, not just ones that triggered a workflow/webhook. Not yet wrapped by any SDK, use the CLI or a raw HTTP call from application code:
+`maxclicks events list --schema <schema>` lists fired events for **one event schema per call** (`--schema` is required, id or slug), newest first, cursor-paginated (`--cursor`, following `pagination.nextCursor`, not the `limit`/`offset`/`totalCount` envelope the other list commands use). Reads through the ClickHouse-backed archive, so it sees every event ever fired, not just ones that triggered a workflow/webhook:
 
 ```bash
 maxclicks events list --schema purchase-completed --all
 maxclicks events list --schema purchase-completed --from 2026-07-01T00:00:00Z --to 2026-07-18T00:00:00Z
 ```
 
-If `--from` is omitted it defaults to the **last 7 days** before `--to` (which defaults to now), not 90; a requested span wider than 90 days is silently clamped (with a `warnings` entry, not rejected). For a single known event, `events get <id>` (already CLI/SDK-wrapped) remains the simpler call.
+If `--from` is omitted it defaults to the **last 7 days** before `--to` (which defaults to now), not 90; a requested span wider than 90 days is silently clamped (with a `warnings` entry, not rejected). To confirm one specific event landed, list its schema over a narrow window and match on your own `eventId`.
+
+The SDKs wrap it too, with the cursor envelope intact:
+
+```ts
+const page = await mc.events.list({ schema: 'purchase-completed', from: '2026-07-01T00:00:00Z', limit: 200 })
+const next = page.pagination.nextCursor   // pass back as `cursor` for the following page
+```
 
 ## Instrument a backend action (TypeScript SDK)
 
@@ -113,5 +116,6 @@ Python is identical in shape: `mc.events.fire("purchase-completed", {"eventId": 
 - **`eventId` deduplicates.** Re-firing with the same `eventId` on the same schema is deduped, which is why it is safe to retry a failed send. Use a real, stable business id (order id, signup id), not a random UUID per attempt.
 - **`--on-error abort` returns HTTP 422 as a result.** The SDKs surface it as a value with `failedIndex`; the CLI prints the body. Do not retry it blindly.
 - **Events are meaningful, not analytics.** Fire `cart-abandoned`, not `page-viewed`. High-volume streams belong in a real analytics pipeline.
-- **Event schemas and attributes can be created via the CLI** (`maxclicks schemas create|update|delete`, `maxclicks attributes create`). Reach for it deliberately, not as a quick fix for one missing key mid-instrumentation.
+- **Event schemas and attributes are read-only over the API.** `schemas list|get` and `attributes list` are the whole surface; the payload contract is authored in the app. A missing key is a request to the user, not something to route around by overloading another attribute.
+- **Events are immutable and there is no get-by-id.** Read them back with `events list --schema <schema>`; `PATCH`/`DELETE` on an event always fail. Fire a corrected event instead.
 - **`events list` requires `--schema`** and defaults to a 7-day lookback, not the 90-day maximum it silently clamps to; pass explicit `--from`/`--to` for anything else, and remember it is cursor-paginated (`--cursor`), not offset-paginated like the other list commands.

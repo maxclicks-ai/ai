@@ -2,21 +2,20 @@
 
 Six complete templates, each with its `subject`, `body`, `expectedDataRepresentation`, and `recipientDataPath`. All six were verified to parse clean (strict mode, zero warnings) with the real Adaptyle parser, both as individual `subject`/`body` fields and as the combined document the platform builds internally for one customize call, before being written here.
 
-**How to actually send one:** because these bodies are multi-line strings, do not hand-escape newlines into a JSON literal. Write the field to a file and let `jq` build the JSON payload safely, then pass that payload to `--data`:
+**How to actually use one.** These are drafts. Adapt the closest one, then hand it over as three things the user sets up in the maxclicks app's email editor (`https://app.maxclicks.ai`):
+
+1. the **`subject`** and **`body`** text, pasted into the editor's raw/code mode with the matching body format (MJML or HTML),
+2. the **`expectedDataRepresentation`** listed with the example (each property key, its type, and the schema or JSON schema behind it), plus the **`recipientDataPath`**,
+3. the **`transactional`** flag and, for marketing content, the communication topic (`maxclicks topics list --all` gives you the ids and names to name the right one).
+
+Point 2 matters most: the data representation is what makes `{{ contact.firstName }}` or `{{ order.total }}` resolve at send time, and it is also the payload contract that `templates send` validates against. Substitute the real schema slugs from `maxclicks schemas list --type contact` and `maxclicks attributes list <schema>`; the `students` and `products` slugs below are placeholders.
+
+Once the template exists, verify and send it:
 
 ```bash
-subject=$(cat subject.txt)
-body=$(cat body.mjml)
-payload=$(jq -n --arg subject "$subject" --arg body "$body" '{
-  transactional: true,
-  recipientDataPath: ["contact"],
-  expectedDataRepresentation: [{ key: "contact", type: "record", schema: "students", isArray: false }],
-  content: { bodyFormat: "mjml", subject: $subject, body: $body }
-}')
-maxclicks templates create --data "$payload"
+maxclicks templates get <templateId>     # read back the stored subject/body and data representation
+maxclicks templates send <templateId> --data '{"contact":{"email":"ada@example.com"}}'
 ```
-
-(Any language's JSON serializer handles this automatically; `jq` is shown here only because the CLI's `--data` flag takes a string on the command line. In application code, just build a normal object and `JSON.stringify`/`json.dumps` it.)
 
 ---
 

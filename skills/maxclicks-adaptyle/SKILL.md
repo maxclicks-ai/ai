@@ -11,13 +11,16 @@ allowed-tools: Bash Read
 
 # Authoring Adaptyle email content in maxclicks
 
-Builds on the `maxclicks` skill (auth, tool choice, data model) and the `maxclicks-email` skill (sending, template CRUD shell). This skill is the content language itself: how to write a template's `subject` and `body` so that Liquid inserts real data deterministically and an LLM personalizes the parts that need judgment.
+Builds on the `maxclicks` skill (auth, tool choice, data model), the `maxclicks-templates` skill (reading a template's send contract) and the `maxclicks-email` skill (sending). This skill is the content language itself: how to write a template's `subject` and `body` so that Liquid inserts real data deterministically and an LLM personalizes the parts that need judgment.
 
-## 1. What this covers, and the honesty note
+## 1. What this covers, and where the content lives
 
-Template **creation is a full CLI command**: `maxclicks templates create --data '<json>'` (see the `maxclicks-templates` skill for the full authoring CRUD, and `maxclicks-email`'s "Authoring templates" section). The public API always stores **raw** editor content, `{ bodyFormat: "mjml"|"html", subject, body }`. There is no rich block-tree editing through the API, that format is the app's internal machine shape, not something you author directly. Write Adaptyle + Liquid text directly into `subject` and `body`.
+**Template content is authored in the maxclicks app** (`https://app.maxclicks.ai`), in the email editor, where the preview and render pipeline validates it before it can go in front of recipients. So this skill has two real jobs:
 
-There is still no server-side "validate this template" or "preview" endpoint exposed publicly. Validate by inspection (Section 9) before you `POST`/`PATCH`, and expect to iterate by reading back what you sent (`GET /templates/{id}`) and testing with `send` against a real or sandbox contact.
+1. **Draft the `subject` and `body`** for a human to put into the app's editor (its raw/code mode takes exactly the Adaptyle + Liquid text you write here). Getting the language right up front is most of the work.
+2. **Read and reason about content that already exists.** `GET /templates/{id}` returns `content` as `{ subject, body }` in **raw** form, always, whichever editor mode the app used (`contentEditor` tells you which). So you can read a live template's Adaptyle back, explain it, spot a bug in it, or draft a corrected version for the user to apply.
+
+There is no public "validate this template" or "preview" endpoint, and no way to write content back through the API. Validate a draft by inspection (Section 9) before handing it over, then confirm by reading the stored template back (`maxclicks templates get <id>`) and exercising it with `templates send` against a real or sandbox contact.
 
 ## 2. The two-stage mental model
 
@@ -28,9 +31,9 @@ Every Adaptyle document resolves in exactly two stages, in order:
 
 Because the LLM already receives the full data object as context, prompt instructions should describe *what to write*, in plain English, not interpolate data into the instruction text. See Section 6.
 
-## 3. Author in RAW, not rich
+## 3. Write RAW content: two strings and a format
 
-The only shape you write is:
+The shape you are writing, whether you are drafting it for the app's editor or reading it back off a template:
 
 ```jsonc
 {
@@ -40,13 +43,15 @@ The only shape you write is:
 }
 ```
 
-There is **no `editor` field to set** (the API forces `raw` server-side) and **no `preview` field** on this shape. For MJML, put preview text inline as an `<mj-preview>` tag inside `<mj-head>` (Section 7). Subject and body are customized together as one logical document (a matched pair), so a prompt in one may reasonably reference what the other is doing, but they are still two separate strings you write and validate independently (see Section 9).
+There is **no separate `preview` field**. For MJML, put preview text inline as an `<mj-preview>` tag inside `<mj-head>` (Section 7). Subject and body are customized together as one logical document (a matched pair), so a prompt in one may reasonably reference what the other is doing, but they are still two separate strings you write and validate independently (see Section 9).
+
+The app's visual editor keeps its own block structure, and a template built that way still reads back through the API as raw text in this shape. That raw text is a faithful read-only projection: study it, never treat it as an editing surface.
 
 ## 4. Syntax
 
 Full cheat sheet: `references/syntax-cheatsheet.md`. The essentials:
 
-- **Manifest** `<<# ... #>>`: optional YAML metadata at the very start of a field (`title`, `description`, `author`, `dataJsonSchema`, `tools`). Rarely needed when authoring against the public API (the platform composes its own manifest for the LLM call); include one only when you want to leave a human-readable `title`/`description` on the field itself.
+- **Manifest** `<<# ... #>>`: optional YAML metadata at the very start of a field (`title`, `description`, `author`, `dataJsonSchema`, `tools`). Rarely needed in a maxclicks template (the platform composes its own manifest for the LLM call); include one only when you want to leave a human-readable `title`/`description` on the field itself.
 - **Prompt tag** `<<< ... >>>`: two forms.
   - Generation: `<<<Instruction>>>` (no content to modify, the LLM writes it from scratch).
   - Modification: `<<<Instruction ::: Base content to modify>>>` (instruction first, then `:::`, then the deterministic base text). Note the order: instruction before content.
@@ -79,17 +84,18 @@ Full reference: `references/mjml-and-html.md`. Quick version:
 
 ## 8. The metadata contract: transactional/topic live on the template, not the send call
 
-`transactional` (boolean) and `communicationTopicId` are fields on the template resource itself (set at `POST /templates` create time or `PATCH /templates/{id}`), not on `templates send`. Whether a message counts as transactional (bypassing marketing suppression, no unsubscribe requirement) or marketing (subject to consent and topic preferences) is a property of the content you write, decided once, not something a caller chooses per send. Pick it deliberately when authoring: a receipt or password reset is transactional; a newsletter or promo is marketing with a topic.
+`transactional` (boolean) and `communicationTopicId` are fields on the template resource itself, set alongside the content in the app and readable with `maxclicks templates get <id>`, never on `templates send`. Whether a message counts as transactional (bypassing marketing suppression, no unsubscribe requirement) or marketing (subject to consent and topic preferences) is a property of the content, decided once, not something a caller chooses per send. Decide it deliberately when you draft: a receipt or password reset is transactional; a newsletter or promo is marketing with a topic. Say which one your draft assumes, so whoever sets it up in the app sets it right.
 
-## 9. Validate before you ship
+## 9. Validate before you hand it over
 
-There is no public preview/validate endpoint yet, so validate by discipline:
+There is no public preview/validate endpoint, so validate by discipline:
 
-1. **Hidden IDs are unique across the whole field** (and ideally across subject+body together, since they may be combined for one customize call). Grep your own draft for `<##` and check for duplicates before sending.
+1. **Hidden IDs are unique across the whole field** (and ideally across subject+body together, since they may be combined for one customize call). Grep your own draft for `<##` and check for duplicates before handing it over.
 2. **Prompt count and nesting**: count `<<<` occurrences (aim for 10 or fewer per field) and check nesting depth (2 or fewer). A field with zero prompts is valid and skips the LLM, that is a feature, not a gap.
 3. **Manifest, if present, is the very first thing in the field** (only leading whitespace allowed before it). A manifest anywhere else is a parse error.
 4. **Every delimiter is closed.** Every `<<<` has a matching `>>>`, every `<##...:::` has a matching `##>`, every `<<#` a matching `#>>`. An unclosed tag is a parse error, not a silent pass-through.
-5. **After creating/updating**, `maxclicks templates get <id>` and re-read your own `subject`/`body` back, confirming they stored exactly what you sent, then exercise it with `templates send` against a real or sandbox contact and inspect the returned `status`/`error` and `warnings` (see `maxclicks-email`).
+5. **Every `{{ }}` reference resolves** against a key the template's `expectedDataRepresentation` declares (read it with `maxclicks templates get <id>`) or against `branding`, which is automatic.
+6. **Once it is in the app**, `maxclicks templates get <id>` and read the stored `subject`/`body` back, confirming the content landed as drafted, then exercise it with `templates send` against a real or sandbox contact and inspect the returned `status`/`error` and `warnings` (see `maxclicks-email`).
 
 See `references/pitfalls.md` for the concrete historical failure mode (a duplicate hidden ID from a generated ID scheme) and how to avoid its class of bug when you are constructing IDs programmatically rather than typing them by hand.
 
@@ -106,11 +112,12 @@ See `references/pitfalls.md` for the concrete historical failure mode (a duplica
 - Don't interpolate data into a prompt's instruction text (Section 6).
 - Don't assume code generation is a shortcut: hand-writing valid Adaptyle syntax directly is more reliable than generating it through an intermediate templating step that might itself mangle the delimiters.
 - Don't reuse a hidden id across subject and body, or across two block instances in the same field, even if you are certain they will never actually collide in this draft; treat the id namespace as global and permanent.
-- Don't set `transactional`/`communicationTopicId` casually; they gate real compliance behavior (suppression, consent).
+- Don't treat `transactional`/`communicationTopicId` casually; they gate real compliance behavior (suppression, consent). State which one a draft assumes.
+- Don't imply you can push content into the platform. Deliver the draft, name the app editor as where it goes, and offer to verify it afterwards with `templates get`.
 
 ## 11. Handoff
 
-Once the template exists and is written, `maxclicks-email` covers `send`ing it (building the `--data` payload, reading the `status`/warnings) and the suppression list it respects. This skill only covers writing the `subject`/`body` content itself.
+Once the template exists in the app, `maxclicks-templates` covers reading its send contract (`expectedDataRepresentation`, `recipientDataPath`) and `maxclicks-email` covers `send`ing it (building the `--data` payload, reading the `status`/warnings) and the suppression list it respects. This skill only covers the `subject`/`body` content itself.
 
 ## References
 
@@ -119,4 +126,4 @@ Once the template exists and is written, `maxclicks-email` covers `send`ing it (
 - `references/mjml-and-html.md`: the allowed MJML v4 tag set, HTML raw structure, inline Liquid in markup.
 - `references/examples.md`: 6 copy-paste RAW templates, each with its `expectedDataRepresentation` and `recipientDataPath`, verified to parse clean in strict mode.
 - `references/pitfalls.md`: the hidden-ID uniqueness rule and the real incident it caused, the no-code-generation-fallacy, nesting/prompt limits, injection escaping.
-- `references/authoring-and-sending.md`: the full create -> validate -> send loop end to end, tying this skill to `maxclicks-email`.
+- `references/authoring-and-sending.md`: the full draft -> validate -> hand off -> read back -> send loop end to end, tying this skill to `maxclicks-templates` and `maxclicks-email`.

@@ -1,55 +1,56 @@
 ---
 name: maxclicks-topics
-description: Create, list, update, or delete a maxclicks communication topic (e.g. "Marketing", "Product Updates"), the consent-scoped grouping for marketing sends. Use when wiring a template's or broadcast's communicationTopicId, or building a preference center.
+description: Look up a maxclicks communication topic (e.g. "Marketing", "Product Updates"), the consent-scoped grouping for marketing sends, and use its id. Use when setting a contact's topicIds, reading a template's communicationTopicId, or building a preference center.
 ---
 
 # Communication topics in maxclicks
 
 Builds on the `maxclicks` skill (read it first). A **topic** is a user-defined grouping, per communication channel, that marketing content is sent under (e.g. "Marketing", "Product Updates"). A contact must have consented to a topic (or the channel generally) before a marketing send under that topic proceeds; transactional content bypasses topics entirely. Today the only channel is `email`.
 
-## Create
+Topics are **authored in the app** (Settings, Communication Topics). Over the API you read them and use their ids. That is the right split: a topic is a consent boundary that contacts have already opted into by name, so renaming or deleting one silently rewrites what those people agreed to receive. The app puts a human in front of that.
 
-```bash
-maxclicks topics create --data '{"name":"Product Updates","description":"Feature launches and changelog digests","color":"blue","private":false}'
-```
-
-`--idempotency-key` is supported. Fields: `name` (required), `description?`, `color?` (a `BadgeColor`, e.g. `blue`, `green`, `amber`), `channel?` (defaults to `email`, the only channel today), `private?` (defaults to `false`). Private topics are hidden from the public contact-preferences page unless the contact has been individually granted access, use for internal or invite-only sequences.
-
-## List, get, update
+## Read the space's topics
 
 ```bash
 maxclicks topics list --all
 maxclicks topics get top_01hx...
-maxclicks topics update top_01hx... --data '{"description":"Now includes beta invites","private":true}'
 ```
 
-**`channel` is immutable.** Attempting to change it on `update` fails with `400 topic_immutable_field`. If content needs a different channel, create a new topic (there is currently only `email`, so this rarely comes up, but the rule holds as more channels ship). `name` collisions return `409 topic_name_conflict`.
+Each topic comes back with `id`, `name`, `description`, `color` (a badge color such as `blue`, `green`, `amber`), `channel` (`email`), `private`, and timestamps. `topics get` on an unknown id returns `404 topic_not_found`.
 
-## Delete
+```ts
+import { Maxclicks } from 'maxclicks'
+const mc = new Maxclicks(process.env.MAXCLICKS_API_KEY!)
+
+const page = await mc.topics.list({ limit: 100 })
+const productUpdates = page.data.find(topic => topic.name === 'Product Updates')
+```
+
+Resolve topics by `name` once, then hold onto the `id`. Names are what a user says ("subscribe them to Product Updates"); ids are what every other endpoint takes.
+
+## Using a topic id
+
+**Set a contact's topic consent** on any record write (see `maxclicks-contacts`). `topicIds` replaces the contact's topic set, so send the full list, not just the addition:
 
 ```bash
-maxclicks topics delete top_01hx...
+maxclicks records upsert students --data '{"email":"ada@example.com","topicIds":["top_01hx...","top_02hy..."]}'
 ```
 
-Blocked with **`409 topic_in_use`** if the topic is referenced by a form or an email template's `communicationTopicId`. Bypass with `--force` when you have confirmed the references should be dropped (the referencing template/form keeps its `communicationTopicId` pointing at a now-deleted topic, effectively reverting that content to "no topic", check what depends on it first):
+The ids are validated against the caller's own space: an id from another space fails the whole write with `400 topic_not_found` rather than linking the contact to a topic they never heard of. Reading a contact back returns its current `topicIds`, and `records audit-trail` shows every topic add/remove as a consent event.
+
+**Read which topic a template sends under.** `communicationTopicId` is part of the content, not the send call, so it is set in the app when the email is authored and read back here:
 
 ```bash
-maxclicks topics delete top_01hx... --force
+maxclicks templates get tmpl_01hx...    # -> { ..., "transactional": false, "communicationTopicId": "top_01hx..." }
 ```
 
-## Wiring into content
-
-```bash
-maxclicks templates update tmpl_01hx... --data '{"communicationTopicId":"top_01hx..."}'
-maxclicks broadcasts create --data '{"contactSchema":"students","content":{"bodyFormat":"mjml","subject":"...","body":"...","communicationTopicId":"top_01hx..."}}'
-```
-
-See `maxclicks-templates` and `maxclicks-broadcasts` for exactly where `communicationTopicId` sits in each resource. A webhook's `condition` and a contact's audit trail also reference topics indirectly through consent events, see `maxclicks-webhooks` and the `maxclicks` skill's data model notes.
+That is the field to check before `templates send`: a marketing template bound to a topic only reaches contacts who consented to that topic, so a send that appears to "do nothing" is usually a consent gap, not a failure. Forms also collect consent per topic, again configured in the app.
 
 ## Gotchas
 
-- **`channel` is immutable after create.** Get it right the first time; there is no migration path other than creating a new topic.
-- **Delete is blocked while referenced**, `--force` bypasses the check but does not clean up the referencing template/form, it silently leaves them pointing at nothing. Confirm nothing depends on the topic first, or accept that consequence deliberately.
-- **`private: true` hides the topic from the public preferences page** unless the contact has explicit access; do not use it for anything a contact is expected to self-manage consent for.
-- **Topics gate marketing, not transactional, sends.** A transactional template/broadcast never checks topic consent regardless of `communicationTopicId`.
-- **`name` must be unique within the space**; a duplicate returns `409 topic_name_conflict` on create or update.
+- **Topics are read-only over the API.** `topics list` and `topics get` are the whole surface; create, rename, recolor and delete happen in the app. Ask the user to add a missing topic rather than reaching for a substitute.
+- **`topicIds` on a record write is a replace, not an append.** Read the contact's current `topicIds` first and send the merged list, or you will silently unsubscribe them from everything you omitted.
+- **A topic id from another space is rejected.** `400 topic_not_found` fails the entire record write; nothing is partially applied.
+- **`private: true` hides the topic from the public preferences page** unless the contact has explicit access. Do not expect a private topic to be self-manageable by a contact.
+- **Topics gate marketing, not transactional, sends.** A transactional template never checks topic consent regardless of `communicationTopicId`.
+- **One channel today.** `channel` is always `email`; the field exists because SMS and push are planned, not because there is a choice to make now.

@@ -1,62 +1,46 @@
 ---
 name: maxclicks-broadcasts
-description: Create, schedule, or send a maxclicks broadcast, a one-time mass email to a contact-schema audience (everyone, a segment, or an AI-generated custom filter). Use for newsletters, promos, or any "email this whole audience" task.
+description: Point a maxclicks broadcast at its audience, schedule or send it, and measure the result. Use for "send this newsletter/promo now or at a time", retargeting a broadcast at a segment, or reporting on a mass send's opens, clicks, and bounces.
 ---
 
-# Building and sending broadcasts in maxclicks
+# Scheduling, sending, and measuring broadcasts in maxclicks
 
-Builds on the `maxclicks` skill (read it first) and, for the audience filter, the `maxclicks-segments` skill. A **broadcast** is a one-shot mass send: pick a contact schema, an audience (all contacts, a saved segment, or a fresh natural-language filter), attach raw email content, and send. Broadcast content is a **1:1 owned copy**, not a reference to a reusable `Template` (for a reusable, send-many-times template, see `maxclicks-templates` instead).
+Builds on the `maxclicks` skill (read it first) and, for the audience, the `maxclicks-segments` skill. A **broadcast** is a one-shot mass email to a contact schema's audience.
 
-## Step 1: Discover the contact schema
+**Broadcasts are built in the maxclicks app** (`https://app.maxclicks.ai`): the contact schema, the email content, and any AI-generated custom audience filter are all authored there, where a human previews the content and reviews the audience condition before it drives a send to thousands of people. Over the API you do the operational half: **retarget, schedule, send, and measure**. Six operations, `list`, `get`, `update`, `send`, `runs`, `metrics`.
+
+If the broadcast a task needs does not exist yet, or its content has to change, say so and hand the user the app.
+
+## Step 1: Find the broadcast and check its state
 
 ```bash
 maxclicks whoami
-maxclicks schemas list --type contact
+maxclicks broadcasts list --all
+maxclicks broadcasts get bc_01hx...
 ```
 
-## Step 2: Create a draft
+`get` returns the state that decides everything you can do next:
 
-A broadcast needs a `contactSchema` at minimum; everything else (audience, content, scheduling) can be added now or via `update`/`send`.
+- **`schedulingStatus`**: `none`, `draft`, `send now`, or `send at`. The last two mean the sending pipeline has it; treat the broadcast as immutable from then on.
+- **`hasContent`** (boolean): whether an email has been written for it in the app. `false` means `send` will be rejected by the readiness gate. The content itself is never returned by this API, only this summary.
+- **`audience`**: `{ "type": "all" }`, `{ "type": "segment", "segmentId": "..." }`, or `{ "type": "custom filter", "requirements": "...", "conditionDescriptionMarkdown": "..." }`. The custom filter's `requirements` and human-readable condition are readable, so you can report exactly who a broadcast targets; the generated expression itself stays server-side.
+- **`contactSchemaId`/`contactSchemaSlug`**, **`scheduledFor`**, **`sendingStartedAt`**, **`sendingFinishedAt`**, **`failureReason`**.
 
-```bash
-# Minimal draft: audience defaults to "all" contacts in the schema, no content yet
-maxclicks broadcasts create --data '{"contactSchema":"students","name":"July product update"}'
-
-# With an explicit segment audience and inline raw content:
-maxclicks broadcasts create --data '{
-  "contactSchema": "students",
-  "name": "July product update",
-  "audience": { "type": "segment", "segmentId": "seg_01hx..." },
-  "content": {
-    "bodyFormat": "mjml",
-    "subject": "<<<Write a short, upbeat subject line about the product update shipped this month.>>>",
-    "body": "<mjml><mj-body><mj-section><mj-column><mj-text><<<Write a two-sentence summary of what shipped this month.>>></mj-text></mj-column></mj-section></mj-body></mjml>",
-    "transactional": false,
-    "communicationTopicId": "top_01hx..."
-  }
-}'
-```
-
-`content` is **raw editor content only** (`{ bodyFormat, subject, body, transactional?, from?, communicationTopicId? }`), no rich block-tree structure, written in Adaptyle + Liquid. Load `maxclicks-adaptyle` for how to write `subject`/`body`. Unlike a template, `transactional` and `communicationTopicId` live inline on this same `content` object, there is no separate authoring resource to patch. `--idempotency-key` is supported on create.
-
-## Step 3: Set the audience
-
-Three audience shapes, only the first two are settable directly:
+## Step 2: Retarget or reschedule
 
 ```bash
 maxclicks broadcasts update bc_01hx... --data '{"audience":{"type":"all"}}'
 maxclicks broadcasts update bc_01hx... --data '{"audience":{"type":"segment","segmentId":"seg_01hx..."}}'
+maxclicks broadcasts update bc_01hx... --data '{"name":"July product update v2","scheduledFor":null}'
 ```
 
-For a one-off natural-language filter that is not worth saving as a reusable segment, generate it directly on the broadcast:
+Only `name`, `description`, `audience`, and `scheduledFor` are updatable, and at least one must be present. The two audience shapes above are the only ones settable here: everyone in the broadcast's contact schema, or a saved segment (find one with `maxclicks segments list --all`, see `maxclicks-segments`).
 
-```bash
-maxclicks broadcasts audience-generate bc_01hx... --requirements "Contacts in the students schema who have completed at least one course and have not received an email from us in the last 14 days."
-```
+A **`custom filter` audience is set in the app**, where the person sending reviews the generated condition before it selects the recipients of a mass send. If a task asks for a one-off natural-language audience, either point the user at the app or save a reusable segment instead and set it here by `segmentId`.
 
-This is a **slow, billed AI call** (see `references/requirements.md` in the `maxclicks` skill for phrasing). It persists a `{ type: "custom filter", requirements, conditionDescriptionMarkdown }` audience and returns a live `matchingCount`; the generated expression itself is never returned. A `custom filter` audience can only be set this way, never via `create`/`update` directly. Rejected once the broadcast has started sending (`409 broadcast_already_sending`).
+`update` never changes `schedulingStatus`; only `send` does that.
 
-## Step 4: Send
+## Step 3: Send
 
 ```bash
 # Send now:
@@ -66,36 +50,27 @@ maxclicks broadcasts send bc_01hx...
 maxclicks broadcasts send bc_01hx... --data '{"scheduledFor":"2026-08-01T14:00:00Z"}'
 ```
 
-`send` moves the broadcast to `send now`/`send at` scheduling status; the actual send is asynchronous (HTTP 202). It runs the same readiness gate the app enforces before letting a broadcast go out: missing content, no verified sender, empty audience, etc.
+`send` moves the broadcast to `send now`/`send at` and answers `202`; the actual sending is asynchronous. It runs the same readiness gate the app enforces before letting a broadcast go out: missing content, no verified sender, empty audience, and so on.
 
-**The gate can reject with `422 broadcast_invalid`, carrying `issues[]`.** Read every issue in the array (there can be more than one problem at once) and fix each before retrying; this is a normal validation result, not a transient error.
+**The gate can reject with `422 broadcast_invalid`, carrying `issues[]`.** Read every issue in the array (there can be more than one problem at once) and fix each before retrying; this is a normal validation result, not a transient error. Issues that trace back to content or sender setup are fixed in the app, not here.
 
-## Step 5: Observe
+## Step 4: Measure
 
 ```bash
 maxclicks broadcasts runs bc_01hx... --all       # one reduced run record per recipient contact
-maxclicks broadcasts metrics bc_01hx...           # aggregated sent/delivered/opens/clicks/bounces
+maxclicks broadcasts metrics bc_01hx...          # aggregated sent/delivered/opens/clicks/bounces
 ```
 
-`metrics` omits the `email` key entirely if the broadcast never had content. A run's `status` is `sent`, `failed`, or `pending`; a `failed` run carries `failureReason`.
+A run carries `contactId`, `contactEmail`, `status` (`sent`, `failed`, or `pending`), `failureReason`, and an `email` object (`id`, `sentAt`, `opensCount`, `clicksCount`, `bounced`, `complained`) or `null`.
 
-## Full lifecycle
-
-```bash
-maxclicks broadcasts list --all
-maxclicks broadcasts get bc_01hx...
-maxclicks broadcasts update bc_01hx... --data '{"name":"July product update v2","scheduledFor":null}'
-maxclicks broadcasts delete bc_01hx...
-```
-
-Only `name`/`description`/`audience`/`scheduledFor` are updatable through `update`; `content` is not editable through that endpoint once set (there is no PATCH for content, recreate the broadcast if the content needs to change before it has content set the first time). Both `update` and `delete` are rejected once sending has started (`409 broadcast_already_sending` / `409 broadcast_sending`).
+`metrics` returns `email` with `sent`, `delivered`, `bounced`, `deliveryDelays`, `rejected`, `failed`, `complained`, `unsubscribed`, `opens`, `uniqueOpens`, `clicks`, `uniqueClicks`. The `email` key is **omitted entirely** when the broadcast never had content, so check for it rather than assuming zeros.
 
 ## Gotchas
 
-- **Broadcast content is owned, not a template reference.** There is no `templateId` on a broadcast; the raw `{ bodyFormat, subject, body }` you send in `content` is copied in, and there is no update path for it after creation via this API.
-- **Transactional/topic live inside `content`, same rule as templates.** `content.transactional` and `content.communicationTopicId` decide suppression and consent handling for this specific send; get them right at creation, since content is not patchable afterward.
-- **`send`'s 422 gate carries an array, not a single error.** `broadcast_invalid` issues can include multiple simultaneous problems (no content, no audience, sender not verified); fix all of them, not just the first.
-- **`audience-generate` is billed and slow, and only settable that way for a custom filter.** You cannot `PATCH` a `custom filter` audience into existence directly; you must call `broadcasts audience-generate`.
-- **`update`/`delete`/`audience-generate` all reject once sending has started.** Once a broadcast is `send now`/`send at` and picked up by the pipeline, treat it as immutable; build a new broadcast (or duplicate manually) for a follow-up send.
-- **There is no `broadcasts duplicate` endpoint** at the Public API level (unlike templates); recreate with the same `content`/`audience` if you need a copy.
+- **Content is not readable or writable here.** `get` gives you `hasContent`, never the subject/body. Authoring and editing the email happen in the app, where the preview pipeline validates it.
+- **A `custom filter` audience can be read but not set.** `update` accepts only `all` and `segment`. Reach for a saved segment when you need a filter over the API.
+- **`send`'s 422 gate carries an array, not a single error.** `broadcast_invalid` issues can include several simultaneous problems (no content, no audience, sender not verified); fix all of them, not just the first.
+- **`update` is rejected once sending has started** (`409 broadcast_already_sending`). Once a broadcast is `send now`/`send at` and picked up by the pipeline, treat it as immutable; a follow-up send is a new broadcast built in the app.
+- **`202` means accepted, not delivered.** Sending is asynchronous and per-recipient; poll `runs`/`metrics` for what actually happened.
 - **Metrics and runs are read-only observability**, not a retry mechanism; a `failed` run does not automatically retry.
+- **Errors to expect**: `broadcast_not_found` (404) on every operation, `invalid_broadcast` (400) and `segment_not_found` on `update`, `broadcast_already_sending` (409) on `update`/`send`, `broadcast_invalid` (422) on `send`.

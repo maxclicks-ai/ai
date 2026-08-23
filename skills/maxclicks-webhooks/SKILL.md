@@ -14,7 +14,7 @@ A webhook needs a `url`, a `trigger`, and (for every trigger except `email event
 - `url` (required): the HTTPS endpoint maxclicks POSTs to.
 - `trigger` (required), exactly one of: `contact upserted`, `contact deleted`, `object upserted`, `object deleted`, `event fired`, `email event`.
 - `schemaId`: **required for every trigger except `email event`**; accepts a schema id or slug (resolve one with `maxclicks schemas list` if you only have the name).
-- `emailEventTypes` (array): required, and only used, when `trigger` is `email event` (e.g. `bounce`, `complaint`, `delivery`, `open`, `click`).
+- `emailEventTypes` (array): required and non-empty, and only used, when `trigger` is `email event`. The values are `scheduled`, `sending failed`, `sent`, `rejected`, `unsubscribed`, `bounced`, `complained`, `delivered`, `opened`, `clicked`, `delivery delayed` (past tense, note: `bounced` not `bounce`).
 - `condition`: one of `{ "type": "none" }` (default), `{ "type": "segment", "segmentId": "<id>" }` (see `maxclicks-segments` for creating one), or `{ "type": "custom filter", "requirements": "<plain-English filter>" }`. The third form is AI-generated server-side, same contract as segments; see the `maxclicks` skill's `references/requirements.md` for how to phrase it. The generated check expression is never returned; on `get`/`list` a custom filter reduces to `{ "type": "custom filter", "description": "<human-readable summary>" }`.
 
 The response includes `signatureVerificationSecret`. **This secret is returned on create and rotate ONLY**, never by `get` or `list`. Save it immediately (into your endpoint's env/secret store): you will need it to verify deliveries, and losing it means rotating.
@@ -37,7 +37,7 @@ maxclicks webhooks create --data '{
 maxclicks webhooks create --data '{
   "url": "https://example.com/hooks/maxclicks",
   "trigger": "email event",
-  "emailEventTypes": ["bounce", "complaint"]
+  "emailEventTypes": ["bounced", "complained"]
 }'
 
 # A natural-language custom filter instead of a segment
@@ -78,34 +78,71 @@ saveSecret(webhook.signatureVerificationSecret)
 maxclicks webhooks list [--all]
 maxclicks webhooks get <id>
 maxclicks webhooks update <id> --data '{"url":"https://example.com/new"}'   # patch: send only changed fields
+maxclicks webhooks update <id> --data '{"status":"live"}'                   # resume a paused/tripped webhook
 maxclicks webhooks delete <id>
 maxclicks webhooks rotate-secret <id>    # returns a NEW signatureVerificationSecret; the old one stops verifying
 ```
 
 SDK equivalents: `mc.webhooks.list({ limit, offset })`, `.get(id)`, `.update(id, params)`, `.delete(id)`, `.rotateSecret(id)`. Rotate when a secret leaks or on a rotation schedule; update your endpoint with the new secret in the same step, since the old one is invalidated immediately.
 
+`update` accepts `url`, `emailEventTypes`, `condition`, and `status` (`live` or `paused`), at least one of them; an empty patch is a `400 invalid_webhook`. `trigger` and the schema are fixed at create time: sending back a value that differs from the current one is a `400 webhook_immutable_field`, so make a new webhook rather than trying to repoint an existing one.
+
+Beyond its config, a webhook carries its own delivery health: `status` (`live`, `paused`, `circuit breaker`), `totalCalls`, `failedCalls`, `failedCallsInARow`, `lastCalledAt`, and `lastCallErrorMessage`. Read those before debugging a "webhook stopped firing" report.
+
+## What a delivery looks like
+
+The POST body is the payload object itself, not a `data` envelope, keyed by record type:
+
+| Trigger                                   | Body                                             |
+| ----------------------------------------- | ------------------------------------------------ |
+| `contact upserted` / `contact deleted`    | `{ "contact": { ... } }`                          |
+| `object upserted` / `object deleted`      | `{ "object": { ... } }`                           |
+| `event fired`                             | `{ "event": { ... } }`                            |
+| `email event`                             | `{ "contact": { ... }, "email": { ... }, "event": { ... } }` (`contact` only when the email resolved to one) |
+
+Records arrive in their output form for the schema the webhook watches, so discover the shape with `maxclicks attributes list <schema>` rather than guessing keys.
+
 ## Verify an inbound delivery
 
-When your endpoint receives a POST, verify it came from maxclicks using the stored `signatureVerificationSecret` before trusting the body. Compute an HMAC-SHA256 over the raw request body and compare (constant-time) against the signature header:
+Every delivery carries three headers:
+
+| Header                | Value                                                                 |
+| --------------------- | --------------------------------------------------------------------- |
+| `X-Webhook-ID`        | Unique id for this delivery attempt (`wr_...`)                        |
+| `X-Webhook-Timestamp` | ISO-8601 UTC timestamp of the attempt                                 |
+| `X-Webhook-Signature` | `v1,<hex>`, an HMAC-SHA256 over `<id>.<timestamp>.<raw body>`         |
+
+The signed string is the delivery id, the timestamp, and the raw body joined by literal dots, and the header value carries a `v1,` scheme prefix in front of the hex digest. Signing the body alone will never match.
 
 ```ts
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
-function verifyMaxclicksWebhook(rawBody: string, signatureHeader: string, secret: string): boolean {
-  const expected = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex')
-  const a = Buffer.from(expected)
-  const b = Buffer.from(signatureHeader)
-  return a.length === b.length && timingSafeEqual(a, b)
+function verifyMaxclicksWebhook(
+  rawBody: string,
+  headers: { id: string; timestamp: string; signature: string },
+  secret: string
+): boolean {
+  const digest = createHmac('sha256', secret)
+    .update(`${headers.id}.${headers.timestamp}.${rawBody}`)
+    .digest('hex')
+  const expected = Buffer.from(`v1,${digest}`)
+  const received = Buffer.from(headers.signature)
+  return expected.length === received.length && timingSafeEqual(expected, received)
 }
 ```
 
-Verify against the **raw** request body bytes (do not re-serialize the parsed JSON, or the HMAC will not match). Reject the request if verification fails.
+Verify against the **raw** request body bytes (do not re-serialize the parsed JSON, or the HMAC will not match). Reject the request if verification fails. Rejecting stale timestamps (say, older than a few minutes) on top of a valid signature is a sensible replay guard on your side; maxclicks does not enforce a window for you.
 
 ## Gotchas
 
-- **The signing secret is shown once,** on `create` and `rotate-secret` only. `get`/`list` never return it. Save it on receipt; if lost, `rotate-secret` and re-store.
+- **The signing secret is shown once,** on `create` and `rotate-secret` only. `get`/`list` never return it. Save it on receipt; if lost, `rotate-secret` and re-store. Neither `create` nor `rotate-secret` is Idempotency-Key aware, because both return a fresh secret.
+- **The signature covers `<id>.<timestamp>.<body>`, not the body alone,** and the header value is prefixed `v1,`. Compare the whole `v1,<hex>` string, constant-time.
+- **Email event type values are past tense** (`bounced`, `complained`, `delivered`, `opened`, `clicked`, ...). `bounce` or `complaint` is rejected as invalid.
 - **`schemaId` is required for every trigger except `email event`,** and accepts a schema id or slug. `emailEventTypes` is required and used only for `trigger: email event`.
-- **A third condition type exists: `{ type: "custom filter", requirements }`.** It is AI-generated server-side from a natural-language description, rate-limited on the AI bucket, and the generated code is never returned (`get`/`list` show `{ type: "custom filter", description }` instead). See the `maxclicks` skill's `references/requirements.md`.
+- **`trigger` and the schema are immutable.** `update` only takes `url`, `emailEventTypes`, `condition`, and `status`; anything else is a `400 webhook_immutable_field`.
+- **A third condition type exists: `{ type: "custom filter", requirements }`.** It is AI-generated server-side from a natural-language description, rate-limited on the AI bucket and billed (a `402 insufficient_credits` is possible), and the generated code is never returned (`get`/`list` show `{ type: "custom filter", description }` instead). See the `maxclicks` skill's `references/requirements.md`.
+- **A tripped circuit breaker is silent.** Five consecutive failed deliveries (any non-2xx response or a connection failure) flip `status` to `circuit breaker` and deliveries stop; nothing retries them. Fix the endpoint, then `webhooks update <id> --data '{"status":"live"}'` to resume, which also re-arms the consecutive-failure counter. Only `live` webhooks receive deliveries: `paused` and `circuit breaker` ones are skipped entirely, not queued.
+- **The `url` must be publicly reachable.** It is checked against an outbound-safety guard at create and update time, so loopback, private-range, and otherwise internal addresses come back as `400 invalid_webhook`, as does a `user:pass@host` URL. Use a tunnel with a public hostname when testing locally, and put any auth in a query parameter or rely on the signature instead.
 - **Integration-owned webhooks** (those with a non-null `integrationVendorName`) cannot be updated, deleted, or rotated through the API: you get a 403 (`webhook_integration_owned`). Only the owning integration can change them.
 - **Segment conditions apply to contact triggers;** a `segmentId` must belong to the same contact schema the webhook watches.
 - **`rotate-secret` invalidates the old secret immediately.** Roll it out to your endpoint atomically to avoid a window of failed verifications.

@@ -1,6 +1,6 @@
-# The full loop: create, validate, send
+# The full loop: draft, validate, hand off, read back, send
 
-End-to-end walkthrough tying this skill (content) to `maxclicks-templates` (the CRUD shell), `maxclicks-email` (sending and suppressions), and `maxclicks-contacts`/the `maxclicks` skill (schema discovery). All template authoring operations below are full CLI commands (not yet wrapped by any SDK; use a raw HTTP call from application code).
+End-to-end walkthrough tying this skill (content) to `maxclicks-templates` (finding a template and reading its send contract), `maxclicks-email` (sending and suppressions), and `maxclicks-contacts`/the `maxclicks` skill (schema discovery). The content itself is written in the maxclicks app's email editor; everything the API can do sits on either side of that step.
 
 ## 1. Confirm the space and discover the schema
 
@@ -14,54 +14,42 @@ Every `{{ contact.<key> }}` you plan to write must resolve against a real base f
 
 ## 2. Decide the data representation and recipient path
 
-List every property your content needs, then write `expectedDataRepresentation`. A single `contact` record property is the common case; add `json` properties for anything else (an order, a cart, a featured article) and `record`+`isArray: true` properties for lists of related records (top picks, recent orders). `recipientDataPath` points at whichever property is the contact or bare email address the send actually goes to, almost always `["contact"]`.
+List every property your content needs, then write out the `expectedDataRepresentation` the template will need. A single `contact` record property is the common case; add `json` properties for anything else (an order, a cart, a featured article) and `record`+`isArray: true` properties for lists of related records (top picks, recent orders). `recipientDataPath` points at whichever property is the contact or bare email address the send actually goes to, almost always `["contact"]`.
+
+This is not decoration: it is the contract `templates send` validates every payload against, and the reason a `{{ }}` reference resolves at send time. Write it down explicitly so it can be set up alongside the content.
 
 ## 3. Decide transactional vs marketing, and the topic
 
-`transactional: true` for anything the recipient needs regardless of marketing consent (receipts, password resets, account notices); `transactional: false` plus a `communicationTopicId` for anything that requires marketing consent (newsletters, promotions, digests). This is a property of the template, decided once here, not something a caller can override per send (see the main SKILL.md Section 8).
+`transactional: true` for anything the recipient needs regardless of marketing consent (receipts, password resets, account notices); `transactional: false` plus a communication topic for anything that requires marketing consent (newsletters, promotions, digests). `maxclicks topics list --all` gives you the space's topics. This is a property of the template, decided once, not something a caller can override per send (see the main SKILL.md Section 8).
 
 ## 4. Write the content
 
-Pick `bodyFormat: "mjml"` or `"html"` (Section 7 of the main SKILL.md, and `mjml-and-html.md`), then write `subject` and `body` directly: deterministic Liquid for anything known and mechanical, prompt tags only where wording genuinely benefits from judgment, hidden blocks for static boilerplate. Start from one of the six templates in `examples.md` and adapt it rather than writing from a blank page.
+Pick `bodyFormat: "mjml"` or `"html"` (Section 7 of the main SKILL.md, and `mjml-and-html.md`), then write `subject` and `body`: deterministic Liquid for anything known and mechanical, prompt tags only where wording genuinely benefits from judgment, hidden blocks for static boilerplate. Start from one of the six templates in `examples.md` and adapt it rather than writing from a blank page.
 
-## 5. Validate by inspection, then create
+## 5. Validate by inspection, then hand it over
 
-Run the checklist in the main SKILL.md Section 9 (unique hidden ids, prompt count and nesting within limits, manifest at the very start if present, every delimiter closed) before sending. Then:
+Run the checklist in the main SKILL.md Section 9 (unique hidden ids, prompt count and nesting within limits, manifest at the very start if present, every delimiter closed, every `{{ }}` reference declared) before you deliver anything.
 
-```bash
-maxclicks templates create --data '{
-  "name": "Welcome email",
-  "transactional": true,
-  "recipientDataPath": ["contact"],
-  "expectedDataRepresentation": [
-    { "key": "contact", "type": "record", "schema": "students", "isArray": false }
-  ],
-  "content": {
-    "bodyFormat": "mjml",
-    "subject": "<<<Write a short, upbeat subject line welcoming the new contact by name.>>>",
-    "body": "<mjml><mj-body><mj-section><mj-column><mj-text><<<Write a one-sentence welcome heading.>>></mj-text></mj-column></mj-section></mj-body></mjml>"
-  }
-}'
-```
-
-Read the response's `id` back; that is the `templateId` you send by.
+Then hand the user a complete package for the app's email editor (`https://app.maxclicks.ai`): the body format, the `subject` and `body` text for its raw/code mode, the data representation and recipient path from step 2, the transactional flag and topic from step 3, and the sender if it should not be the space default. Ask for the resulting template id back; that is the `templateId` you send by.
 
 ## 6. Read it back, then send it for real
 
 ```bash
-maxclicks templates get <templateId>                # confirm subject/body stored exactly what you sent
+maxclicks templates get <templateId>                # confirm the stored subject/body and expectedDataRepresentation
 maxclicks templates send <templateId> --data '{"contact":{"email":"ada@example.com"}}'
 ```
 
-`send` is synchronous and returns `{ emailId, status: "sent"|"failed", error? }` plus any warnings in the same body's `warnings` array (see `maxclicks-email`). A `"failed"` status (a genuine SES failure) is a real `200` result to read, not an exception; pre-send validation/eligibility problems throw as real HTTP errors instead. Sending upserts the `contact` (and any other record properties) inside `--data` as a side effect, keep that payload to identifiers plus fields you actually want written (see `maxclicks-contacts` for the identity cascade).
+`get` is the verification step: the content comes back in raw form whichever editor mode was used, so you can diff it against your draft by eye, and its `expectedDataRepresentation` tells you exactly which keys the `--data` payload must carry.
+
+`send` is synchronous and returns `{ emailId, status: "sent"|"failed", error? }` plus any warnings in the same body's `warnings` array (see `maxclicks-email`; the CLI confirms the call rather than printing that body, so use an SDK when you need to branch on `status`). A `"failed"` status (a genuine SES failure) is a real `200` result to read, not an exception; pre-send validation/eligibility problems throw as real HTTP errors instead. Sending upserts the `contact` (and any other record properties) inside `--data` as a side effect, keep that payload to identifiers plus fields you actually want written (see `maxclicks-contacts` for the identity cascade).
 
 ## 7. Iterate
 
-`maxclicks templates update <templateId> --data '<json>'` to change `content`, `expectedDataRepresentation`, `recipientDataPath`, `transactional`, or `communicationTopicId`; re-send at any point without recreating the template. `maxclicks templates duplicate <templateId>` when you want a variant to A/B without touching the original. `maxclicks templates delete <templateId>` to remove one you no longer need.
+Edits to the content, the data representation, the recipient path, the transactional flag, or the topic all happen in the app, on the same template. Nothing about the send call changes: re-send at any point with `maxclicks templates send <templateId>`, and re-run step 6's `get` after any edit, since a changed `expectedDataRepresentation` changes what your payload must satisfy. For a variant to A/B against, ask for a second template rather than mutating the one already in use.
 
 ## Where this hands off
 
-- **`maxclicks-templates`**: the full authoring CRUD (field shapes, `expectedDataRepresentation`, `recipientDataPath`, `from`).
+- **`maxclicks-templates`**: finding a template and reading its send contract (`expectedDataRepresentation`, `recipientDataPath`, `from`, `transactional`).
 - **`maxclicks-email`**: `send` and suppressions.
 - **`maxclicks-contacts`**: schema/attribute discovery, the record identity cascade, and what happens when `send` upserts a record as a side effect.
 - **`maxclicks` skill's `references/requirements.md`**: if you also need a segment or a webhook filter to route these emails, not this skill's concern, but the same natural-language-`requirements` discipline applies there.

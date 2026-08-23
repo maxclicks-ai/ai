@@ -2,18 +2,20 @@
 
 Agent Skills that teach an AI agent to build on maxclicks. Each folder is one skill: a `SKILL.md` (frontmatter + instructions) plus any `references/`.
 
-- `maxclicks`: the umbrella skill (auth, data model, CLI/SDK/API map, gotchas, the natural-language `requirements` contract, schema/attribute/API-key management). Start here.
-- `maxclicks-contacts`: manage contacts and objects (records), plus bulk CSV imports.
-- `maxclicks-events`: fire and list events to trigger automations.
-- `maxclicks-email`: send templates and manage suppressions.
-- `maxclicks-templates`: author templates (create/list/get/update/duplicate/delete), the CRUD shell around a template's content and data shape.
-- `maxclicks-adaptyle`: write an email template's content in Adaptyle, the manifest/prompt/hidden-block syntax over Liquid, MJML/HTML raw bodies.
-- `maxclicks-segments`: build AI-generated contact filters (natural-language `requirements`).
-- `maxclicks-broadcasts`: create, schedule, and send mass emails to a segment or the whole audience.
-- `maxclicks-deliverability`: verify sending domains and manage saved sender profiles.
-- `maxclicks-topics`: manage communication topics (consent-scoped marketing groupings).
-- `maxclicks-imports`: bulk CSV import of contacts/objects, with status polling and failure logs.
-- `maxclicks-workflows`: trigger workflows and observe their runs.
+They all describe the same surface: **Public API v1, 55 operations across 16 resource groups**, wrapped by the `maxclicks` CLI, the eight SDKs, and the MCP server. The organizing principle across every skill: entities are authored in the maxclicks app, and the API triggers, reads and measures them.
+
+- `maxclicks`: the umbrella skill (auth, the shape of the surface, the data model, CLI/SDK/API map, gotchas, the natural-language `requirements` contract). Start here.
+- `maxclicks-contacts`: manage contacts and objects (records) and read a contact's consent audit trail.
+- `maxclicks-events`: fire events to trigger automations, and read the event history back.
+- `maxclicks-email`: send templates and manage the suppression list.
+- `maxclicks-templates`: read stored templates, understand their expected data shape and recipient path, and send against them (a template's content is authored in the app).
+- `maxclicks-adaptyle`: Adaptyle, the manifest/prompt/hidden-block content language over Liquid, with MJML or HTML bodies.
+- `maxclicks-segments`: generate AI-defined contact filters from natural-language `requirements`, then count and list their contacts.
+- `maxclicks-broadcasts`: point a broadcast at an audience, schedule or send it, and read its runs and metrics.
+- `maxclicks-deliverability`: read sending domains (including their live DNS records) and saved sender profiles, and check sending readiness.
+- `maxclicks-topics`: read communication topics (consent-scoped marketing groupings).
+- `maxclicks-imports`: **pending removal.** Bulk CSV import is an app feature; there is no imports endpoint in v1. For a handful of records, loop `records upsert`.
+- `maxclicks-workflows`: trigger workflows, observe their runs, and pause or unpause them.
 - `maxclicks-webhooks`: manage outgoing webhooks (including natural-language custom filters) and verify signatures.
 
 These are the source of truth. The installable index at `.well-known/skills/index.json` is generated from this folder with `npm run build:index`, and served at `https://maxclicks.ai/.well-known/skills/index.json` for `npx skills add https://maxclicks.ai`.
