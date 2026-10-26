@@ -5,6 +5,8 @@ description: Send an email or a stored template to a contact through maxclicks. 
 
 # Sending email and templates with maxclicks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill (read it first for auth, the CLI/SDK/raw split, and the schema-based data model). This skill covers **sending**: a stored **template**, and managing email **suppressions** (the do-not-contact list). For finding a template and reading the data shape it expects, see the `maxclicks-templates` skill. For the content language inside a template (the Adaptyle + Liquid subject/body), see the `maxclicks-adaptyle` skill.
 
 ## Sending a template
@@ -16,9 +18,9 @@ Procedure:
 1. `maxclicks whoami` to confirm the space.
 2. Get the `templateId` from the user, the app (`https://app.maxclicks.ai`), or `maxclicks templates list --all` yourself, then read its contract with `maxclicks templates get <id>` (see `maxclicks-templates`).
 3. Build the `--data` payload matching the template's `expectedDataRepresentation`. The recipient lives inside this payload, typically as a `contact` property carrying at least an identifier: `{ "contact": { "email": "ada@example.com" } }`. Other properties (objects, JSON values) are keyed by whatever the template declares.
-4. Send. `POST /templates/{templateId}/send` is synchronous and returns `{ emailId, status: "sent"|"failed", error? }`. A `"failed"` status (a genuine SES failure) is a normal `200`, not an HTTP error, read it rather than assuming success from a 2xx. Pre-send validation/eligibility problems (no credits, domain not verified, recipient suppressed/unsubscribed, etc.) throw as real HTTP errors instead of coming back as `status: "failed"`.
+4. Send and inspect the result. `POST /templates/{templateId}/send` returns `{ emailId, status, error }`. `sent` means provider acceptance, not inbox delivery. HTTP 200 `failed` can represent refusal, cancellation or an unknown provider outcome, so it does not prove another send is safe. Preserve the email id and original operation key and reconcile in the app before a replacement send. Pre-send validation/eligibility failures use HTTP errors. A template with no email channel can return null result fields.
 
-The SDKs return that `{ emailId, status, error }` object. The CLI only confirms the call went through, so when you need the `emailId` or have to branch on `status`, call from an SDK or raw HTTP rather than the CLI.
+Node source returns that result, but some wrappers (notably PHP/Ruby) discard it, and current declarations can lag nullable wire fields. The CLI prints a local confirmation and discards the send result. Use direct HTTP or a client that exposes the actual outcome when deciding what happened.
 
 The `contact` object is a flat record (base fields and defined custom attribute keys at the top level, no `data` wrapper). Sending it can create-or-update that contact as a side effect: passing `{ "contact": { "email": "ada@example.com", "firstName": "Ada" } }` upserts Ada's `firstName` while sending. Only pass keys you intend to persist. Undefined attribute keys are dropped with a warning.
 
@@ -41,9 +43,10 @@ TypeScript SDK:
 import { Maxclicks } from 'maxclicks'
 
 const mc = new Maxclicks(process.env.MAXCLICKS_API_KEY!)
-await mc.templates.send('tmpl_welcome_01', {
+const result = await mc.templates.send('tmpl_welcome_01', {
   data: { contact: { email: 'ada@example.com' } },
-})
+}, { idempotencyKey: 'welcome-ada-2026-09-26' })
+if (result.status !== 'sent') console.error(result.emailId, result.status, result.error)
 ```
 
 Python SDK:
@@ -105,11 +108,11 @@ There is no get-one endpoint: list with `--identifier` is how you check whether 
 
 ## Gotchas
 
-- **A successful send call does not guarantee delivery.** `send` hands off to SES; delivery failures are recorded on the email record, not thrown. `send` itself is synchronous and returns `{ emailId, status: "sent"|"failed", error? }`; a `"failed"` status is a normal `200` result to read, not an exception. Do not report "delivered", report "queued/sent".
-- **The CLI does not print the send body.** It confirms the call succeeded; the `{ emailId, status, error }` object comes back through the SDKs and raw HTTP. If the task needs the `emailId`, or has to branch on `status`, do not send from the CLI.
+- **A successful HTTP call does not guarantee delivery.** Read status and preserve emailId. `sent` means provider acceptance; `failed` can include an unknown outcome. Report the observed result and reconcile unknown outcomes without creating a fresh operation key.
+- **The CLI does not print the send body.** It confirms the call succeeded; the `{ emailId, status, error }` object comes back through compatible SDKs and raw HTTP. If the task needs the `emailId`, or has to branch on `status`, do not send from the CLI.
 - **Warnings are in the response body, in the `warnings` array**, alongside `data`, same envelope as every other endpoint. The SDKs surface these for you, so read them.
-- **`send` accepts an `Idempotency-Key`**, one of only seven operations that do. Use it whenever a retry after a timeout would otherwise risk a duplicate email.
-- **Pre-send validation/eligibility failures throw as real HTTP errors, not `status: "failed"`.** `email_limit_reached` (402), `sending_disabled`/`domain_not_verified`/`marketing_requires_contact`/`recipient_not_subscribed`/`recipient_suppressed` (422), `template_not_sendable`/`invalid_data` (400) all mean the send never reached SES. Only a genuine SES-side failure comes back as `200` with `status: "failed"`.
+- **`send` accepts an `Idempotency-Key`.** Keep it and the request body unchanged on retries. Node source supports `{ idempotencyKey }` as the third send argument; the current CLI send/raw helper cannot set it. A recorded error may replay, and a new key can create a duplicate send.
+- **Pre-send validation/eligibility failures use HTTP errors.** `email_limit_reached` (402), `sending_disabled`/`domain_not_verified`/`marketing_requires_contact`/`recipient_not_subscribed`/`recipient_suppressed` (422), and `template_not_sendable`/`invalid_data` (400) are distinct from HTTP 200 `failed`. Do not infer provider outcome or retry safety from a generic failed result.
 - **Transactional vs marketing, and the communication topic, are baked into the template, not the send call.** You cannot override them at send time. `transactional` and `communicationTopicId` are fields on the template itself, read them with `maxclicks templates get <id>`; changing one is an app-side edit to the template.
 - **Sending records into the platform mutates them.** The `contact` (and any object) inside `--data` is upserted by identity as a side effect of the send. Keep the payload to identifiers plus fields you actually want written.
 - **Read the template before you send it.** `expectedDataRepresentation` is the payload contract and it can change whenever someone edits the template in the app; a mismatch is `invalid_data` (400). See `maxclicks-templates` for the read-then-send loop.

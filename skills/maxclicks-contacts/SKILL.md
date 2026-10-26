@@ -5,6 +5,8 @@ description: Create, import, update, search, or delete contacts, customers, user
 
 # Managing contacts and objects in maxclicks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the **maxclicks** skill (auth, tool choice, and the schema-based data model). Read that first if you have not. This skill covers the concrete record operations: discover, upsert/create, list/get/update/delete, bulk loading, and reading a contact audit trail.
 
 Contacts and objects are both **records** under a schema. Contacts (a contact schema) can receive email; objects (an object schema) are any other business entity (products, companies). Everything below applies to both, except the audit trail, which is contacts only.
@@ -76,11 +78,15 @@ maxclicks records update students <recordId> --data '{"notes":"VIP","phone":null
 maxclicks records delete students <recordId>
 ```
 
-`update` targets a known record id and patches it; omit a key to leave it unchanged, send explicit `null` to clear a nullable field. There is no server-side text search endpoint: to find a record by email, upsert (idempotent) or `list --all` and filter client-side.
+`update` targets a known record id and patches it; omit a key to leave it unchanged, send explicit `null` to clear a nullable field. There is no server-side ad-hoc text filter on records list. Discover records with bounded list pages and filter locally; an upsert is a write, not a read-only lookup.
+
+## Deletion status
+
+A record DELETE returns `{ operationId, status, message }`, not a completed-erasure guarantee. Preserve the complete operation id and poll `GET /record-deletions/{operationId}` until `completed`. `pending` means cleanup remains; `blocked` needs reconciliation. Incomplete operations return HTTP 202. Current Node deletion declarations still use the older shape, so use direct HTTP for this contract.
 
 ## Bulk loading
 
-**There is no batch record endpoint.** A bulk load is a loop over `upsert`, one record per call. That is fine at this scale, because upsert is idempotent: a re-run of a partially-failed batch re-applies the successful rows harmlessly and retries the failed ones.
+**There is no batch record endpoint.** A bulk load is a loop over `upsert`, one record per call. Throttle writes and record per-row progress. Upsert preserves record identity, but repeating it can repeat side effects; reuse a supported stable idempotency key for one unchanged logical write.
 
 Warnings on a single-record write are not attached to the returned record; register the SDK's `onWarning` callback to see them:
 
@@ -101,7 +107,7 @@ for (const row of rows) {
   try {
     await mc.records.upsert('students', row)
   } catch (error) {
-    console.error('failed', row.email, error)   // keep going; upsert re-run is safe
+    console.error('failed', row.email, error)   // record failure and retry with the same logical-operation key
   }
 }
 ```

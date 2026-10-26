@@ -5,6 +5,8 @@ description: Start or trigger a maxclicks workflow / automation via its incoming
 
 # Trigger and observe maxclicks workflows
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill (read that first for auth, tool choice, and the schema-based data model). This skill covers starting a workflow run through its **incoming-webhook** trigger step, and the read/lifecycle operations around it.
 
 ## What you can and cannot do here
@@ -71,7 +73,7 @@ except MaxclicksError as e:
 
 ## Retry-safety
 
-The trigger endpoint accepts an `Idempotency-Key` header, which is the right way to make a retried external webhook delivery safe: reuse the upstream event's own id as the key and a redelivery replays instead of starting a second run. The SDKs take it as an optional argument on `trigger` (Python `idempotency_key=`, Ruby `idempotency_key:`, PHP `$idempotencyKey`); check your SDK's signature. The CLI's `trigger` command has no `--idempotency-key` flag and `maxclicks api` cannot set headers, so drop to a plain HTTP call there:
+The trigger endpoint accepts an `Idempotency-Key` header, which is the right way to make a retried external webhook delivery safe: reuse the upstream event's own id as the key and a redelivery replays instead of starting a second run. Node source accepts `{ idempotencyKey }` as the third `trigger` argument; other language clients expose different options, so check the installed signature. The CLI's `trigger` command has no `--idempotency-key` flag and `maxclicks api` cannot set headers, so drop to a plain HTTP call there:
 
 ```bash
 curl -X POST https://api.maxclicks.ai/v1/workflows/onboarding-signup \
@@ -104,7 +106,7 @@ maxclicks workflows unpause wf_01hx...
 
 The same operations exist on the SDKs: `mc.workflows.list()`, `.get(id)`, `.listRuns(id)`, `.getRun(id, runId)`, `.pause(id)`, `.unpause(id)`.
 
-A `Workflow` carries `name`, `description`, `paused`, `published`, and `isDirty` (it has unpublished changes in the app). A `WorkflowRun` carries `versionId`, `status` (`running`, `completed`, or `failed`), `failureReason`, and a `stepHistory` array of `{ stepId, stepLabel, slotKey, enteredAt, leftAt, failureReason }`. That step history is how you tell which branch a run took and where it stopped.
+A `Workflow` carries `name`, `description`, `paused`, `published` and `isDirty`. A run carries status, version, failure reason, parent-run context, `stepCount` and a window of at most 100 `stepHistory` rows, each with an `index`. GET run initially returns the latest window. Pass non-null `nextHistoryBeforeIndex` as `history_before` to read older rows. A failed run can have null `failureReason` when the failed step is outside that window. Current Node/CLI/MCP helpers do not expose this cursor; use direct HTTP for complete history.
 
 This is how you confirm a trigger actually did something: list runs for the workflow and inspect the run's status and step history, instead of relying on side effects or the app's run history. Pausing stops the workflow from starting new runs (runs already in progress finish normally); it does not touch steps, and a paused workflow's trigger reference stops matching (see the gotcha below).
 
@@ -115,7 +117,7 @@ This is how you confirm a trigger actually did something: list runs for the work
 - **A 404 on trigger is ambiguous.** `workflow_step_not_found` covers a missing reference, a duplicate one, a workflow that is not published, a step whose request JSON schema was never filled in, and a paused workflow. If a reference that used to work starts 404ing, check `workflows get` for `paused: true` and `published` before assuming the reference is wrong.
 - **Unpublished edits do not take effect.** A workflow with `isDirty: true` has app-side changes that are not in the published version your trigger runs; the run executes the last published version.
 - **The payload is validated against the step's JSON schema.** A field the schema does not allow, or a missing required field, is rejected with a validation error. Match the schema the user configured; do not assume a contact/record shape.
-- **Trigger failures can be `text/plain`, not the JSON error envelope** (400, 404, and 500 from the workflow handler; auth failures still use the envelope). The CLI and SDKs normalize this for you; only worry about it if you call `maxclicks api` or the HTTP endpoint directly and parse the failure body yourself.
+- **Trigger failures use the standard JSON error envelope.** Inspect the response code/message; preserve operation metadata on an unknown idempotency outcome instead of forcing another run.
 - **A successful trigger does not mean the workflow succeeded.** It means the run was accepted and started. Downstream steps run asynchronously and can still fail; check the run's `status` and `failureReason` rather than assuming success from the trigger's 2xx.
 - **Triggering is a write operation.** A read-only caller gets a 403; the run can spend credits and send mail, so it is gated accordingly.
 - **Step-level configuration is app-only.** Building the workflow and wiring or editing steps happen in the maxclicks app; listing, observing runs, and pausing/unpausing are the lifecycle operations available here.

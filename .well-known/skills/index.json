@@ -2,7 +2,7 @@
   "skills": [
     {
       "name": "maxclicks",
-      "description": "Work with the maxclicks email, CRM, and automation platform: manage contacts, objects, and records; define schemas and attributes (including AI-generated evaluated attributes); fire events; send emails, author and send templates; build segments and broadcasts with natural-language filters; build and trigger workflows; manage webhooks, domains, senders, topics, imports, API keys, and suppressions; or build a maxclicks integration in any language. Use whenever a task mentions maxclicks, or involves its API, CLI (`maxclicks`), SDKs (Node, Python, Go, PHP/Laravel, Ruby, Java, Rust), or MCP server.",
+      "description": "Work with the maxclicks email, CRM, and automation platform: read schemas and attributes; manage contacts, objects, and records; fire and query events; send templates; generate segments from natural language; schedule, send, and measure broadcasts; trigger and observe workflows; manage webhooks and suppressions; read configured domains, senders, and topics; or build a maxclicks integration. Use whenever a task mentions maxclicks, or involves its API, CLI (`maxclicks`), SDKs (Node, Python, Go, PHP/Laravel, Ruby, Java, Rust, Elixir), or MCP server.",
       "files": [
         "SKILL.md",
         "references/api-reference.md",
@@ -26,7 +26,7 @@
     },
     {
       "name": "maxclicks-broadcasts",
-      "description": "Create, schedule, or send a maxclicks broadcast, a one-time mass email to a contact-schema audience (everyone, a segment, or an AI-generated custom filter). Use for newsletters, promos, or any \"email this whole audience\" task.",
+      "description": "Point a maxclicks broadcast at its audience, schedule or send it, and measure the result. Use for \"send this newsletter/promo now or at a time\", retargeting a broadcast at a segment, or reporting on a mass send's opens, clicks, and bounces.",
       "files": [
         "SKILL.md"
       ]
@@ -40,7 +40,7 @@
     },
     {
       "name": "maxclicks-deliverability",
-      "description": "Add and verify a sending domain, or create a saved sender profile, in maxclicks. Use before sending any email from a new domain, when DNS/SPF/DKIM/DMARC setup is needed, or when a template/broadcast needs a \"from\" address.",
+      "description": "Read a maxclicks sending domain's DNS verification state and records, or list saved sender profiles. Use before sending any email from a new domain, when DNS/SPF/DKIM/DMARC setup needs checking, or when a template or broadcast needs a verified \"from\" address.",
       "files": [
         "SKILL.md"
       ]
@@ -54,35 +54,35 @@
     },
     {
       "name": "maxclicks-events",
-      "description": "Track or fire events (purchase completed, signup, cart abandoned, etc.) into maxclicks to trigger workflows and webhooks. Use when instrumenting an app or backfilling events via the maxclicks API, CLI, or SDKs.",
+      "description": "Accept durable business events in maxclicks, inspect their receipts and readiness, list ready events, or connect browser observations through a trusted identity backend. Use for application instrumentation and event backfills using the current REST contract or the published clients.",
       "files": [
         "SKILL.md"
       ]
     },
     {
       "name": "maxclicks-imports",
-      "description": "Bulk-import contacts or objects into maxclicks from a CSV file, poll import status, and download the per-row failure log. Use for real bulk loads (hundreds+ rows), not one-off record writes.",
+      "description": "Route a bulk load of contacts or objects into maxclicks. Use when asked to import a CSV, migrate a contact list, or backfill hundreds of records. A file goes through the app's CSV importer; data already in your program goes through a throttled records upsert loop.",
       "files": [
         "SKILL.md"
       ]
     },
     {
       "name": "maxclicks-segments",
-      "description": "Create, list, count, or update maxclicks segments, AI-generated contact filters defined by a natural-language prompt. Use for audience definitions, saved filters, or \"contacts where...\" style queries against the maxclicks API or CLI.",
+      "description": "Create, list, count, inspect, or delete maxclicks segments, AI-generated contact filters defined by a natural-language prompt. Use for audience definitions and saved filters; editing an existing segment happens in the app.",
       "files": [
         "SKILL.md"
       ]
     },
     {
       "name": "maxclicks-templates",
-      "description": "Create, list, get, update, duplicate, or delete a reusable maxclicks email template (the authoring CRUD, separate from sending). Use when a task needs to define a template's data shape, recipient, sender, or metadata, not just send an existing one.",
+      "description": "Read a maxclicks email template and send it with a matching data payload. Use when a task needs to find a stored template, learn the data shape and recipient it expects, or send it to a contact.",
       "files": [
         "SKILL.md"
       ]
     },
     {
       "name": "maxclicks-topics",
-      "description": "Create, list, update, or delete a maxclicks communication topic (e.g. \"Marketing\", \"Product Updates\"), the consent-scoped grouping for marketing sends. Use when wiring a template's or broadcast's communicationTopicId, or building a preference center.",
+      "description": "Look up a maxclicks communication topic (e.g. \"Marketing\", \"Product Updates\"), the consent-scoped grouping for marketing sends, and use its id. Use when setting a contact's topicIds, reading a template's communicationTopicId, or building a preference center.",
       "files": [
         "SKILL.md"
       ]
@@ -96,7 +96,7 @@
     },
     {
       "name": "maxclicks-workflows",
-      "description": "Start or trigger a maxclicks workflow / automation via its incoming-webhook step. Use when a task needs to kick off a maxclicks workflow with a payload from an external system.",
+      "description": "Start or trigger a maxclicks workflow / automation via its incoming-webhook step, then list, inspect, pause, or unpause workflows and their runs. Use when a task needs to kick off a maxclicks workflow with a payload from an external system, or to check whether a run actually did anything.",
       "files": [
         "SKILL.md"
       ]

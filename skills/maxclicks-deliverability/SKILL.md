@@ -5,6 +5,8 @@ description: Read a maxclicks sending domain's DNS verification state and record
 
 # Domains and senders in maxclicks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill (read it first). Domains and senders pair together: a **domain** is a business domain (`example.com`) with DNS-verified sending capability; a **sender** is a saved `{code, name}` slug on top of a verified domain (`support@example.com`, "Support Team"). A template's `from` field points at either a domain (with a manual `code`/`name`) or a saved sender. At least one verified domain is required before any email can send.
 
 **Both are read-only over the API.** Domains and senders are registered in the maxclicks app (`https://app.maxclicks.ai`); this API reads them back. Adding a domain reserves that name globally across the platform and provisions AWS SES resources (an email identity, transactional and marketing configuration sets, a return-path subdomain), so it stays a human, in-app action. Your job here is the other half: read the DNS records back, tell the user exactly what to put in their DNS provider, and confirm when verification lands.

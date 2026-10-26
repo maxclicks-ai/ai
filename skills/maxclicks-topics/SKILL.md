@@ -5,6 +5,8 @@ description: Look up a maxclicks communication topic (e.g. "Marketing", "Product
 
 # Communication topics in maxclicks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill (read it first). A **topic** is a user-defined grouping, per communication channel, that marketing content is sent under (e.g. "Marketing", "Product Updates"). A contact must have consented to a topic (or the channel generally) before a marketing send under that topic proceeds; transactional content bypasses topics entirely. Today the only channel is `email`.
 
 Topics are **authored in the app** (Settings, Communication Topics). Over the API you read them and use their ids. That is the right split: a topic is a consent boundary that contacts have already opted into by name, so renaming or deleting one silently rewrites what those people agreed to receive. The app puts a human in front of that.

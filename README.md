@@ -2,23 +2,29 @@
 
 The one-stop shop for building on [maxclicks](https://maxclicks.ai) with AI agents. This repo ships **Agent Skills** and **agents** that teach any skills-compatible coding agent (Claude Code, Cursor, Codex, Gemini CLI, and more) to work with the maxclicks API, SDKs, CLI, and docs, using the latest best practices.
 
-Install one skill and your agent can manage contacts, fire events, send email, author email content in Adaptyle, build segments and broadcasts with natural-language filters, build and trigger workflows, and wire webhooks against your maxclicks space, correctly and safely. The `maxclicks` CLI now wraps the full Public API v1 surface (schemas/attributes writes, segments, broadcasts, template authoring, domains, senders, topics, imports, API keys, and more); the SDKs are still catching up on the newer domains (see the `maxclicks` skill's `references/api-reference.md` and `references/sdks.md`).
+The skills cover contact records, durable business events, stored-template sends, natural-language segments, prepared broadcasts and workflows, and outgoing webhooks. They also help draft Adaptyle email content for the app editor. Schemas, attributes, email content, workflow steps, domains, senders, topics, API keys, and CSV import remain app workflows; the public API does not author them. `@maxclicks/ai` is a private skills-and-plugins repository, not a runtime AI SDK.
+
+**Availability:** the clients install from npm (`maxclicks`, `@maxclicks/browser`, `maxclicks-cli` and `maxclicks-mcp`), and the MCP server is hosted at `https://mcp.maxclicks.ai/mcp`. Use the documented REST API for current receipt/readiness, identity, and deletion contracts; clients do not yet cover the whole current surface.
 
 ## Install
 
-### npx (any agent, recommended)
+### From this reviewed checkout
+
+Copy the needed `skills/` folders into your agent's skills directory. This works without an npm release of any maxclicks client. The repository also contains plugin manifests and an agent definition.
+
+### Hosted catalog (after deployment verification)
 
 ```bash
 npx skills add https://maxclicks.ai
 ```
 
-This reads `https://maxclicks.ai/.well-known/skills/index.json` and installs the maxclicks skills into your agent. Update later with:
+This is the intended hosted install command. Before relying on it, verify that the deployed index and **every file it lists** are served successfully; the local catalog does not prove deployment. Update an existing installation with:
 
 ```bash
 npx skills update -y
 ```
 
-### Official plugins (auto-updating)
+### Repository plugins
 
 **Claude Code**
 
@@ -41,17 +47,17 @@ Clone this repo and copy the `skills/` folders into your agent's skills director
 
 | Skill | Use it when |
 | --- | --- |
-| `maxclicks` | The entry point: auth, the schema-based data model, the full CLI/SDK/API map, schema/attribute/API-key management, and the top gotchas. Loads on any maxclicks task. |
+| `maxclicks` | Auth, the schema-based data model, verified REST operations, client coverage, release availability, and the top gotchas. |
 | `maxclicks-contacts` | Creating, importing, updating, or deleting contacts and objects (records). |
-| `maxclicks-events` | Firing and listing events to trigger automations. |
+| `maxclicks-events` | Accepting events, inspecting receipts/readiness, and listing ready event history. |
 | `maxclicks-email` | Sending templates and managing email suppressions. |
-| `maxclicks-templates` | Authoring a template's CRUD shell: create/list/get/update/duplicate/delete, data representation, recipient path, sender. |
+| `maxclicks-templates` | Reading stored templates, their data representation, recipient path and sender, then sending a matching payload. |
 | `maxclicks-adaptyle` | Writing or editing an email template's content: Adaptyle's manifest/prompt/hidden-block syntax over Liquid, MJML/HTML raw bodies. |
 | `maxclicks-segments` | Building AI-generated contact filters from a natural-language prompt. |
-| `maxclicks-broadcasts` | Creating, scheduling, and sending mass emails to a segment or the whole audience. |
-| `maxclicks-deliverability` | Adding and verifying sending domains, and managing saved sender profiles. |
-| `maxclicks-topics` | Managing communication topics for consent-scoped marketing sends. |
-| `maxclicks-imports` | Bulk-importing contacts or objects from a CSV file. |
+| `maxclicks-broadcasts` | Retargeting, scheduling, sending, and measuring broadcasts prepared in the app. |
+| `maxclicks-deliverability` | Reading sending-domain DNS verification and saved sender profiles configured in the app. |
+| `maxclicks-topics` | Looking up communication topics for consent-scoped marketing sends. |
+| `maxclicks-imports` | Choosing the app CSV importer or a throttled per-record synchronization loop. |
 | `maxclicks-workflows` | Triggering workflows through their incoming-webhook step, and observing runs. |
 | `maxclicks-webhooks` | Creating and managing outgoing webhooks, and verifying inbound signatures. |
 
@@ -65,10 +71,10 @@ Each skill is grounded in the real maxclicks surface (no invented endpoints) and
 
 ## Prerequisites
 
-- A maxclicks API key (create one at `https://app.maxclicks.ai/-/settings/developers`). Set `MAXCLICKS_API_KEY`, or run `maxclicks config set-key <key>`.
-- For terminal operations the skills use the **maxclicks CLI**: `npm install -g maxclicks-cli` (its own repo, [maxclicks-cli](https://github.com/maxclicks-ai/maxclicks-cli)).
-- For application code, the skills point at the **maxclicks SDKs** (Node, Python, Go, PHP/Laravel, Ruby, Java, Rust).
-- For hosts that speak MCP, the maxclicks **MCP server** is at `https://mcp.maxclicks.ai/mcp`.
+- A maxclicks API key created in the [app](https://app.maxclicks.ai), for a workspace you are authorized to use. Keep it in `MAXCLICKS_API_KEY` or your secret store.
+- REST integrations use `https://api.maxclicks.ai/v1` with a Bearer key. Browser collector keys and routes are a separate contract.
+- CLI/Node/browser examples use the npm packages; see [client coverage](skills/maxclicks/references/sdks.md) for what each covers.
+- MCP clients connect to `https://mcp.maxclicks.ai/mcp` and sign in with OAuth, or run `npx -y maxclicks-mcp` locally with an API key.
 
 ## How it fits together
 

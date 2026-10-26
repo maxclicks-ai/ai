@@ -1,9 +1,11 @@
 ---
 name: maxclicks-segments
-description: Create, list, count, change, or delete maxclicks segments, AI-generated contact filters defined by a natural-language prompt. Use for audience definitions, saved filters, or "contacts where..." style queries against the maxclicks API or CLI.
+description: Create, list, count, inspect, or delete maxclicks segments, AI-generated contact filters defined by a natural-language prompt. Use for audience definitions and saved filters; editing an existing segment happens in the app.
 ---
 
 # Building segments in maxclicks
+
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
 
 Builds on the `maxclicks` skill (read it first). A **segment** is a named, reusable contact filter scoped to one contact schema. You describe the filter in plain English; the server generates and stores a query/check expression from it, evaluated fresh on every read. This is the flagship natural-language domain, read `references/requirements.md` (in the `maxclicks` skill) before writing a `requirements` string.
 

@@ -41,7 +41,7 @@ maxclicks templates send <templateId> --data '{"contact":{"email":"ada@example.c
 
 `get` is the verification step: the content comes back in raw form whichever editor mode was used, so you can diff it against your draft by eye, and its `expectedDataRepresentation` tells you exactly which keys the `--data` payload must carry.
 
-`send` is synchronous and returns `{ emailId, status: "sent"|"failed", error? }` plus any warnings in the same body's `warnings` array (see `maxclicks-email`; the CLI confirms the call rather than printing that body, so use an SDK when you need to branch on `status`). A `"failed"` status (a genuine SES failure) is a real `200` result to read, not an exception; pre-send validation/eligibility problems throw as real HTTP errors instead. Sending upserts the `contact` (and any other record properties) inside `--data` as a side effect, keep that payload to identifiers plus fields you actually want written (see `maxclicks-contacts` for the identity cascade).
+`send` returns `{ emailId, status, error }`, with warnings alongside `data` (see `maxclicks-email`; the CLI discards the result, so use direct HTTP or a compatible SDK when the outcome matters). `sent` means provider acceptance, not delivery. HTTP 200 `failed` may include an unknown provider outcome; preserve the email id and original operation key and reconcile before sending again. Pre-send validation/eligibility failures use HTTP errors. A template without an email channel can return null result fields. Sending upserts the `contact` (and any other record properties) inside `--data` as a side effect, keep that payload to identifiers plus fields you actually want written (see `maxclicks-contacts` for the identity cascade).
 
 ## 7. Iterate
 

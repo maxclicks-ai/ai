@@ -1,24 +1,24 @@
 # maxclicks API reference (CLI + SDK + HTTP)
 
-The complete Public API v1 surface: **16 resource groups, 55 operations**, spec version 1.1.0. Base URL `https://api.maxclicks.ai/v1` (stage: `api-stage`). Auth: `Authorization: Bearer <api_key>` on everything except the public form/email endpoints.
+The current Public API v1 source contract: **16 resource groups, 58 functional operations**, spec version 1.1.0 (checked 26 September 2026). Base URL `https://api.maxclicks.ai/v1`. Auth: `Authorization: Bearer <api_key>` on everything except the public form/email endpoints.
 
 **The surface follows one principle:** entities are *authored in the maxclicks app*, and the API *triggers, reads and measures* them. Schemas, attributes, templates, broadcast content, domains, senders and topics are created and configured in the app; this API reads them back so a caller can discover ids, shapes and status, and drives the sends and automations that depend on them. (API keys are also minted in the app, and are the one thing this API does not read back: a key is full-permission and inherits the owner's membership.)
 
-**Coverage:** every operation below is wrapped by the CLI **and** by all eight SDKs (Node, Python, Go, PHP/Laravel, Ruby, Java, Rust, Elixir), with three exceptions: the public `forms.*` and `emails.*` endpoints are in the SDKs but have no CLI subcommand (reach them with `maxclicks api` if you must). If a method or subcommand is not listed here, it does not exist: do not invent one, and do not reach for the raw escape hatch expecting a hidden endpoint.
+**Coverage:** CLI/SDK columns describe the published clients, not complete current response types. The current Node client has no dedicated event-status, event-identity or deletion-status methods, and no workflow-history cursor option. Use HTTP for those contracts. Check each language client's source before translating a method signature.
 
 ## Envelopes and conventions
 
-- Success: `{ "data": <payload>, "warnings"?: [ ... ] }`. Paginated (offset-based, every list except `events.list`): `{ "data": [ ... ], "pagination": { "limit", "offset", "totalCount", "hasMore" }, "warnings"?: [ ... ] }`. `events.list` uses a cursor envelope instead: `{ "limit", "nextCursor", "hasMore" }`, no `offset`, no `totalCount`.
-- Error: `{ "error": { "type": "invalid_request_error" | "api_error", "code": <string|null>, "message": <string>, "issues"?: [ ... ] } }`. `type` is `invalid_request_error` for every 4xx and `api_error` for every 5xx. `issues` appears only on the few validation gates that report several problems at once (notably `broadcasts.send`'s `broadcast_invalid`).
-- Pagination: `limit` default 50, clamped to 1..200 with a warning; `offset` default 0. **`offset` above 10000 is rejected with `400 offset_too_large`**, not clamped, so a client cannot silently page forever. Narrow the query instead. CLI `--all` walks every page; the SDKs auto-paginate.
-- Rate limits per key, three buckets: `read` 100/second (every `GET`), `write` 25/second (every other `POST`/`PATCH`/`DELETE`), `ai` 10/minute (the LLM-backed calls: `segments.create`, and `webhooks.create`/`webhooks.update` when they carry a `custom filter` condition). On 429 you get a `Retry-After` header (an HTTP date, UTC); the SDKs and CLI retry with backoff honoring it.
+- Success: `{ "data": <payload>, "warnings"?: [ ... ] }`. Paginated offset-based lists: `{ "data": [ ... ], "pagination": { "limit", "offset", "totalCount", "hasMore" }, "warnings"?: [ ... ] }`. `events.list` uses a cursor envelope instead: `{ "limit", "nextCursor", "hasMore" }`, no `offset`, no `totalCount`.
+- Error: `{ "error": { "type": "invalid_request_error" | "api_error", "code": <string|null>, "message": <string>, "issues"?: [ ... ] } }`. `type` is `invalid_request_error` for every 4xx and `api_error` for every 5xx. `issues` appears on validation gates. Event batch abort uses a 422 `data` envelope; an unresolved idempotency persistence failure can omit `error.type`.
+- Pagination: `limit` default 50, clamped to 1..200 with a warning; `offset` default 0. **`offset` above 10000 is rejected with `400 offset_too_large`**, not clamped, so a client cannot silently page forever. Narrow the query instead. Pagination stops at the server's offset traversal cap, and `hasMore` becomes false when the next page would reach it. `--all` is not an unlimited export guarantee.
+- Rate limits per key, three buckets: `read` 100/second (every `GET`), `write` 25/second (every other `POST`/`PATCH`/`DELETE`), `ai` 10/minute (the LLM-backed calls: `segments.create`, and `webhooks.create`/`webhooks.update` when they carry a `custom filter` condition). On 429 honor `Retry-After`, which can be seconds or an HTTP date. Retry only when the operation and client make doing so safe. Events also have shared occurrence, backlog and receipt-storage admission limits.
 - Beyond the usual codes, four appear here: `402` (`insufficient_credits` on an AI call or a schema with AI auto-fill; `email_limit_reached` on `templates.send`), `405` (`events_immutable`), `413` (`payload_too_large`, body over 10 MB), `415` (`unsupported_media_type`). `400` also covers `malformed_json`.
 - Path values (schema slug, ids) are URL-encoded for you by the CLI and SDKs.
 - `Perm` below is the caller key's minimum space-membership permission (`read` / `write` / `admin`). A key with less returns 403. Only the five suppression operations require `admin`.
 
-## Idempotency: exactly seven operations
+## Idempotency: 17 REST operations
 
-`Idempotency-Key` is accepted on **seven** operations and no others:
+These operations accept `Idempotency-Key` in the current server source:
 
 | Operation | HTTP |
 | --- | --- |
@@ -26,19 +26,27 @@ The complete Public API v1 surface: **16 resource groups, 55 operations**, spec 
 | `records.upsert` | `POST /schemas/{schema}/records/upsert` |
 | `suppressions.batchCreate` | `POST /contacts/suppressions/batch` |
 | `suppressions.batchDelete` | `POST /contacts/suppressions/batch-remove` |
+| `suppressions.delete` | `DELETE /contacts/suppressions/{id}` |
+| `segments.create` | `POST /segments` |
+| `segments.delete` | `DELETE /segments/{id}` |
+| `broadcasts.update` | `PATCH /broadcasts/{id}` |
 | `broadcasts.send` | `POST /broadcasts/{id}/send` |
 | `templates.send` | `POST /templates/{templateId}/send` |
+| `webhooks.create` | `POST /webhooks` |
+| `webhooks.update` | `PATCH /webhooks/{id}` |
+| `webhooks.delete` | `DELETE /webhooks/{id}` |
+| `webhooks.rotateSecret` | `POST /webhooks/{id}/rotate-secret` |
 | `workflows.trigger` | `POST /workflows/{workflowStepReference}` |
+| `workflows.pause` | `POST /workflows/{id}/pause` |
+| `workflows.unpause` | `POST /workflows/{id}/unpause` |
 
-The first request with a given key executes normally; a retry while the original is still in flight returns `409 idempotency_conflict`; a retry after completion replays the original status and body verbatim with an `Idempotent-Replay: true` response header. Records expire after 24 hours.
+A key is at most 256 characters and belongs to one logical operation. It is scoped to the calling API key, method and resolved path, with a canonical request-body fingerprint. Keep that key, path and body unchanged on retries. Changed input returns `422 idempotency_key_reused`; active work returns `409 idempotency_conflict`. Replays return the recorded status/body with `Idempotent-Replay: true`. Recorded results can include errors and signing secrets: do not assume any 4xx/5xx is safe to execute again, and protect replayed webhook responses.
 
-Only `2xx` responses are cached. A `4xx` is not: the request was rejected before doing anything, so there is no side effect to replay and you are free to fix the payload and retry with the same key. A `5xx` is not cached either, so it re-executes.
+Completed operation records expire after 24 hours. Unresolved operations remain for reconciliation and can return `idempotency_outcome_unknown`; preserve any `Operation-Id`, original key and body, and reconcile before starting a replacement operation. Upserting the same identity does not alone prevent repeated side effects.
 
-The key is scoped to the API key, the resolved request path, and a hash of the request body. Two different resources under one key therefore do not collide, and reusing a key with a **changed** body returns `422 idempotency_key_reused` rather than silently replaying the first response. JSON key order does not matter: the body is canonicalized before hashing, so a reordered but otherwise identical retry still replays.
+Event acceptance uses a stable `eventId` instead. Event identity changes use a UUID `operationId` with `expectedAliasRevision`. Record deletion has its own pollable operation id and does not use `Idempotency-Key`.
 
-Everything else is not idempotency-aware. For `events.fire`/`events.fireBatch`, dedupe with a stable `eventId` of your own. `webhooks.create` and `webhooks.rotateSecret` deliberately refuse it, because replaying a cached response would re-expose the plaintext signing secret.
-
-Client support is uneven, so check before you rely on it. The CLI exposes `--idempotency-key` on four of the seven (`records create`, `records upsert`, `suppressions batch-add`, `suppressions batch-remove`) and has no way to set it on `templates send` or `workflows trigger` (`maxclicks api` sends no custom headers either). Among the SDKs, Python, Go, PHP, Ruby and Rust take an idempotency key per call; Node, Java and Elixir do not expose one.
+**Client support is smaller than server support.** Node source exposes `options.idempotencyKey` on `records.create`, `records.upsert`, `suppressions.batchCreate`, `suppressions.batchDelete`, `templates.send`, `broadcasts.send` and `workflows.trigger`. The CLI flag exists on record create/upsert and suppression batch add/remove only. Its raw `api` command cannot add custom headers. Use direct HTTP for another supported server operation or when the installed client lacks the option. Other language clients must be checked individually.
 
 ## 1. Meta (1)
 
@@ -57,7 +65,7 @@ Returns `{ apiKey: { id, name, keyDisplay, createdAt }, user: { id, email, name 
 
 `Schema` = `{ id, type: contact|object|event, slug, name, namePlural, description, integrationVendorName, attributeCount, createdAt, updatedAt }`. `attributeCount` counts custom attributes only, base attributes excluded. `{schema}` accepts an id or a slug; slugs are the ergonomic choice.
 
-Schemas are **created and edited in the app**, under Settings then Schemas (`https://app.maxclicks.ai/-/settings/schemas`). There is no schema write endpoint, because the platform has no schema-migration system yet: a schema created over the API could never be corrected afterwards, and would not even be able to receive attributes. Discover here; author there.
+Schemas are **created and edited in the app** (`https://app.maxclicks.ai`). The current public routes expose list/get, not schema writes. Discover here; author there.
 
 ## 3. Attributes (1, read-only)
 
@@ -74,9 +82,9 @@ Base attributes first, then custom ones. `Attribute` = `{ id, key, label, descri
 
 `nullable` is present on every stored definition and absent on `evaluated`. An `evaluated` attribute is computed rather than stored (an AI-generated expression run server-side); its generated expression is never returned by any endpoint at any permission level.
 
-Attributes are authored in the app for the same reason as schemas: no migration system means a wrong type or a wrong key could not be fixed. Read them here so your writes only ever set keys that exist.
+Attributes are authored in the app. Read them here so your writes only set keys that exist.
 
-## 4. Records: contacts and objects (7)
+## 4. Records: contacts and objects (8)
 
 | Op | CLI | SDK | HTTP | Perm |
 | --- | --- | --- | --- | --- |
@@ -87,10 +95,13 @@ Attributes are authored in the app for the same reason as schemas: no migration 
 | Update | `maxclicks records update <schema> <id> --data '<json>'` | `records.update(schema, id, input)` | `PATCH /schemas/{schema}/records/{id}` | write |
 | Delete | `maxclicks records delete <schema> <id>` | `records.delete(schema, id)` | `DELETE /schemas/{schema}/records/{id}` | write |
 | Audit trail | `maxclicks records audit-trail <schema> <id> [--channel email] [--all]` | `records.auditTrail(schema, id, { channel, limit, offset })` | `GET /schemas/{schema}/records/{id}/audit-trail` | read |
+| Deletion status | HTTP | HTTP | `GET /record-deletions/{operationId}` | read |
 
 Records are **flat**: `{ id?, email, firstName, lastName, fullName, avatarUrl, userId, phone, notes, tags: [...], subscriptions: ["email"], topicIds: [...], <customKey>: <value> }` for contacts; `{ externalId, notes, tags, <customKey> }` for objects. There is no `data`/`attributes`/`properties` wrapper.
 
 `create` fails when the identity already exists; `upsert` matches by `id > userId > email > phone` (contact) or `id > externalId` (object). `update`/`upsert` with an explicit `null` clears a nullable field; omit a key to leave it unchanged. `source`, `subscriptions` and `emailStatistics` are platform-managed and not settable. Conflicting identifier updates on `upsert` are skipped and reported in `warnings` rather than failing the call. Audit trail is contacts only, newest first, and strips `ipAddress`/`userAgent` from the returned `context`.
+
+**Deletion is asynchronous.** Preserve `{ operationId, status, message }` from DELETE, then poll `GET /record-deletions/{operationId}` using the URL-encoded full operation id until `status` is `completed`. `pending` means cleanup remains; `blocked` needs reconciliation. HTTP 202 indicates an incomplete operation; a 2xx alone does not establish erasure. Current Node `records.delete` declarations still describe the older response; use direct HTTP for the current contract.
 
 ## 5. Suppressions (5, admin key)
 
@@ -104,25 +115,29 @@ Records are **flat**: `{ id?, email, firstName, lastName, fullName, avatarUrl, u
 
 Only `manual` and `legal` are settable reasons. `unsubscribed`, `hard_bounce`, `soft_bounce_consecutive` and `spam_complaint` are system-applied and read-only: deleting one returns `403 suppression_reason_not_removable`. Suppressions are stored by hashed identifier, never by contact, and the raw identifier is never returned (only `identifierHash`). `list` includes global suppressions alongside space-scoped ones, since both block sends. `affectedContactCount` appears only on create responses.
 
-Batch bodies are **wrapped objects, not bare arrays**: `{ "suppressions": [{ identifier, reason, notes? }, ...] }` for batch create, `{ "ids": ["<id>", ...] }` for batch remove. Both always respond `200` with per-item results and a summary; an already-existing suppression comes back as `exists`, not as a failure. Single create and single delete are not idempotency-aware.
+Batch bodies are **wrapped objects, not bare arrays**: `{ "suppressions": [{ identifier, reason, notes? }, ...] }` for batch create, `{ "ids": ["<id>", ...] }` for batch remove. Both always respond `200` with per-item results and a summary; an already-existing suppression comes back as `exists`, not as a failure. Single create is not idempotency-aware; single delete supports `Idempotency-Key`.
 
-## 6. Events (3)
+## 6. Events and source identity (5)
 
-| Op | CLI | SDK | HTTP | Perm |
-| --- | --- | --- | --- | --- |
-| List | `maxclicks events list --schema <schema> [--from <iso>] [--to <iso>] [--cursor <c>] [--limit <n>] [--all]` | `events.list({ schema, from, to, cursor, limit })` | `GET /events?schema=<id-or-slug>` | read |
-| Fire | `maxclicks events fire <schema> --data '<json>'` | `events.fire(schema, input)` | `POST /events/{schema}` (202) | write |
-| Fire batch | `maxclicks events fire-batch <schema> --data '<json-array>' [--on-error abort]` | `events.fireBatch(schema, events, { onError })` | `POST /events/{schema}/batch` (1-500) | write |
+| Op | CLI / source client | HTTP | Perm |
+| --- | --- | --- | --- |
+| List ready events | `maxclicks events list --schema <schema>` / `events.list({ schema, from, to, cursor, limit })` | `GET /events?schema=<id-or-slug>` | read |
+| Accept one event | `maxclicks events fire <schema> --data '<json>'` / `events.fire(schema, input)` | `POST /events/{schema}` | write |
+| Accept batch | `maxclicks events fire-batch <schema> --data '<json-array>'` / `events.fireBatch(schema, events, { onError })` | `POST /events/{schema}/batch` | write |
+| Current readiness | Direct HTTP; no current Node/CLI/MCP wrapper | `GET /events/{schema}/{id}/status` | read |
+| Bind/unbind browser identity | Direct HTTP; no current Node/CLI/MCP wrapper | `POST /event-identities` | write |
 
-Event input is flat: `{ eventId?, occurredAt?, <customKey> }`. Any `id` is ignored on fire.
+Server event input is flat: `{ eventId?, occurredAt?, contactId?, objectId?, <customKey> }`. `contactId` and `objectId` are mutually exclusive subjects; any `id` on input is ignored. Normalized input is capped at 256 KiB. `occurredAt` must be within the previous 366 days or five minutes into the future.
 
-`fire` is asynchronous fire-and-forget: `202` with `{ accepted: n }`, not the stored event, and it does not fail when a downstream workflow or webhook is misconfigured. If the ingest pipeline is down you get `502 ingest_unavailable`.
+Single acceptance returns HTTP 202 with `data: { accepted: 1, id, eventId, isDuplicate, readinessAtAcceptance }`. `readinessAtAcceptance` is the immutable original `pending` or `ready` state. Retry the same `eventId` and normalized input/explicit `occurredAt` to recover the receipt with `isDuplicate: true`; a changed input returns `409 event_id_conflict`, and erased occurrences return `409 event_erased`. Missing `eventId` is generated, so retain the receipt.
 
-`fireBatch`'s HTTP body is a **wrapped object**, `{ "events": [ ... ], "onError": "continue"|"abort" }` (the CLI's `--data` takes the bare array and the SDKs take the array argument; both wrap it for you). It returns `{ results, summary }`, plus `failedIndex` on an abort. With `onError: continue` (the default) every item is validated and the whole valid subset is ingested in one call; if that single ingest call fails, the whole request fails `502` rather than partially succeeding. With `onError: abort` the batch stops at the first invalid item, ingests nothing, and returns `422` carrying that same body: **a result to read, not an error to retry.**
+Poll `GET /events/{schema}/{id}/status` using the receipt's **maxclicks id**, not the caller's `eventId`. Current `readinessState` can be `pending`, `ready`, `failed` or `outcome_unknown`. It includes timestamps, definition revision, subjects and `data` (raw accepted values before readiness, prepared values when ready). Acceptance and readiness do not prove workflow, webhook or email completion.
 
-`events.list` requires the `schema` query param (one schema per call) and reads the ClickHouse-backed archive, so it sees every event ever fired. `from`/`to` default to the 7 days before now; a span wider than 90 days is silently clamped with a warning, not rejected. It is the only cursor-paginated endpoint in v1: pass `pagination.nextCursor` back as `cursor`, and expect no `offset` and no `totalCount`. Errors: `invalid_cursor`, `invalid_time_range`, `event_archive_unavailable` (502).
+Batch bodies are `{ "events": [...], "onError": "continue"|"abort" }`, with 1–500 events. `continue` commits each event independently; read every result even on HTTP 200. Accepted items carry their receipts, and admission failures can carry `retryAfterMilliseconds`. `abort` rolls back new acceptances on a validation/admission failure, marks them `rolled_back`, leaves existing duplicate occurrences intact, and returns HTTP 422 with `data.results`, `data.summary`, and `data.failedIndex`; later items are not attempted. Read that result rather than retrying the whole batch blindly.
 
-Events are immutable: `PATCH`/`DELETE /events/{id}` always return `405 events_immutable`. There is no get-an-event-by-id operation; find it through `events.list`.
+`events.list` contains **ready** events, not every accepted event. It requires one `schema`, defaults to a seven-day window, and clamps spans over 90 days with a warning. Follow `pagination.nextCursor`; there is no offset/totalCount. Pending and failed occurrences belong in the status endpoint. Events are immutable; the PATCH/DELETE guards return `405 events_immutable`.
+
+**Browser identity:** `POST /event-identities` requires all six fields: `sourceId`, `subjectSchemaId` (contact schema id), `anonymousId`, `contactId` (or null to unbind), UUID `operationId`, and decimal-string `expectedAliasRevision`. An enabled contact track definition must match the source and schema. Keep the returned `identityRevision` for that alias's next change; use `"0"` only for a new alias. Reuse the operation id and unchanged body for retries. Revision/input conflicts or erased aliases return 409. A server-held Write-authorized key is required; never put it in browser code. Browser `identify()` delegates to an authenticated application backend, and `track()` returns local enqueue state. The browser collector endpoint must be provisioned separately, not guessed from the public REST host.
 
 ## 7. Domains (2, read-only)
 
@@ -208,7 +223,7 @@ Templates are **authored in the app**: the content, the sender, the recipient pa
 
 `send` body is `{ "data": { ... } }`, keyed by the template's `expectedDataRepresentation` properties. Minimal identifiers suffice for record properties (`{ "contact": { "email": "ada@example.com" } }`); the platform finds-or-creates the record, reads it back, then renders. **That upsert is a real side effect:** sending a template with extra fields on a contact updates that contact.
 
-The send is synchronous and returns `{ emailId, status: "sent"|"failed", error? }` with any warnings in the body's `warnings` array. A `"failed"` status is a genuine SES failure returned as a **`200`, not an HTTP error**; read it rather than assuming success, and note the `error` message is deliberately generic (the real detail stays server-side). Pre-send validation and eligibility failures throw as real HTTP errors instead: `email_limit_reached` (402), `sending_disabled` / `domain_not_verified` / `marketing_requires_contact` / `recipient_not_subscribed` / `recipient_suppressed` (422), `template_not_sendable` / `invalid_data` (400).
+The send returns `{ emailId, status, error }` with any warnings alongside `data`. `sent` means provider acceptance, not inbox delivery. HTTP 200 `failed` can represent refusal, cancellation or an unknown provider outcome: it does not prove non-delivery or make another send safe. Preserve `emailId` and the original operation key and reconcile in the app. A template with no email channel can return null fields. Pre-send validation and eligibility failures throw as real HTTP errors instead: `email_limit_reached` (402), `sending_disabled` / `domain_not_verified` / `marketing_requires_contact` / `recipient_not_subscribed` / `recipient_suppressed` (422), `template_not_sendable` / `invalid_data` (400).
 
 Not every client hands that body back: the CLI prints `{ "sent": true, "templateId": ... }`, and the PHP and Ruby SDKs return void. If you need to read `status` and `emailId`, use the Node, Python, Go, Java, Rust or Elixir SDK, or call `maxclicks api POST /templates/<id>/send --data '{"data":{...}}'`.
 
@@ -236,7 +251,7 @@ Create params: `{ url, trigger, schemaId?, emailEventTypes?, condition? }`.
 
 On read a webhook is `{ id, createdAt, updatedAt, url, trigger, emailEventTypes, schemaId, condition, status, totalCalls, failedCalls, failedCallsInARow, lastCalledAt, lastCallErrorMessage, integrationVendorName }`. `status` is `live` / `paused` / `circuit breaker` (the platform trips the breaker after repeated failures). A custom filter reduces on read to `{ type: "custom filter", description }`; the generated check expression is never returned.
 
-`signatureVerificationSecret` is returned **only** on create and rotate-secret. Save it immediately: nothing returns it again, and rotating invalidates the old one instantly. A non-null `integrationVendorName` means the webhook is integration-owned and cannot be updated, deleted, or rotated (`403 webhook_integration_owned`).
+`signatureVerificationSecret` is returned on create and rotate-secret, including idempotent replay of those responses; normal get/list never returns it. Save it securely, protect replay bodies, and remember rotating invalidates the old secret instantly. A non-null `integrationVendorName` means the webhook is integration-owned and cannot be updated, deleted, or rotated (`403 webhook_integration_owned`).
 
 ## 14. Workflows (7)
 
@@ -252,15 +267,15 @@ On read a webhook is `{ id, createdAt, updatedAt, url, trigger, emailEventTypes,
 
 Workflows are **built in the app**: there is no create-workflow, add-step or edit-step endpoint, and no delete. The API triggers, observes, and pauses an already-published workflow.
 
-`Workflow` = `{ id, createdAt, updatedAt, name, description, paused, isDirty, published }` (`isDirty` means it has unpublished changes). `WorkflowRun` = `{ id, createdAt, updatedAt, versionId, status: running|completed|failed, failureReason, stepHistory: [{ stepId, stepLabel, slotKey, enteredAt, leftAt, failureReason }] }`.
+`Workflow` = `{ id, createdAt, updatedAt, name, description, paused, isDirty, published }` (`isDirty` means it has unpublished changes). `WorkflowRun` includes status, version, failure reason and a bounded `stepHistory` window (at most 100 rows). Each history row has an `index`; `stepCount`, parent-run fields and `nextHistoryBeforeIndex` provide additional context. Pass the non-null cursor as `history_before` to GET run to inspect older history. A failed run can have a null `failureReason` in a window that omits the failed step. Current client declarations/options do not fully expose this contract.
 
 `trigger`'s path segment is the **incoming-webhook step's `workflowStepReference`**, not a workflow id. The body is arbitrary JSON validated server-side against that step's configured JSON schema, and the response `data` is an empty object. It needs `write` permission (the run it starts can send email, spend credits, call AI, mutate records, and issue outbound HTTP requests) and it supports `Idempotency-Key`, which is the right way to make a retried external webhook delivery safe.
 
-Two trigger-specific traps: failures from the workflow handler come back as **`text/plain`**, not the JSON error envelope (authentication failures still use JSON), and `404 workflow_step_not_found` covers a missing, duplicate, unpublished *or paused-workflow* step indistinguishably. `400 invalid_request_body` means the body failed the step's JSON schema.
+Trigger failures use the standard JSON error envelope. `404 workflow_step_not_found` covers a missing, duplicate, unpublished *or paused-workflow* step indistinguishably. `400 invalid_request_body` means the body failed the step's JSON schema.
 
 `pause` stops new runs from starting; runs already in flight finish normally. See the `maxclicks-workflows` skill.
 
-## 15. Forms (2, unauthenticated, SDK only)
+## 15. Forms (2, unauthenticated REST; SDK wrappers)
 
 | Op | SDK | HTTP |
 | --- | --- | --- |
@@ -271,7 +286,7 @@ Public: the tenant is derived from the form, not from an API key. `submit` valid
 
 `confirmDoubleOptIn` is a browser navigation target: it always redirects (302) to the hosted result page, including on every failure path (missing token, expired token, unpublished form), so there is no JSON error to parse. Rarely needed from an agent.
 
-## 16. Emails (1, unauthenticated, SDK only)
+## 16. Emails (1, unauthenticated REST; SDK wrapper)
 
 | Op | SDK | HTTP |
 | --- | --- | --- |
@@ -283,4 +298,4 @@ The RFC 8058 one-click unsubscribe target, form-encoded with `List-Unsubscribe=O
 
 `maxclicks api <METHOD> <path> [--data '<json>']` sends an authenticated request to any path and returns `{ status, body }`. Use it for the three public endpoints the CLI does not wrap, or when you need the full response body of a command whose CLI wrapper summarizes it. It sends only `Authorization`, `Accept` and `Content-Type`, so it cannot carry an `Idempotency-Key`.
 
-It is **not** a way around the surface above: an operation absent from this document does not exist on the server either, and calling it returns 404.
+Only call verified routes from the matching contract. For public form/email requests and custom headers, direct HTTP gives precise control; the CLI raw helper always sends its configured Authorization header.

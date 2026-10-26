@@ -5,15 +5,17 @@ description: Route a bulk load of contacts or objects into maxclicks. Use when a
 
 # Bulk-loading contacts and objects into maxclicks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill and `maxclicks-contacts` (read those first for the schema-based data model and the shape of a single record write).
 
-**There are no import operations on the Public API.** Do not reach for `/imports`, `maxclicks imports ...`, or an `imports` resource on an SDK: the CLI, the eight SDKs and the MCP server all mirror the same v1 surface, and none of them has one. CSV import is an app feature, because it needs the column-to-attribute mapping, the sample file and the per-row failure review that only the UI can give.
+**There are no import operations on the current Public API.** Do not invent `/imports`, CLI import commands or SDK methods. CSV import is an app workflow; a programmatic migration can instead use the supported per-record writes below.
 
 So a bulk-load request splits two ways, and picking the right side is most of this skill's job.
 
 ## The user has a CSV file: route them to the app
 
-Tell them to open **Settings -> Schemas -> the schema -> Import** in the maxclicks app and upload the file there. That page also offers a downloadable sample CSV with the correct headers for that schema, and keeps a table of past imports so they can review failures.
+Use the target schema's CSV import flow in the maxclicks app. Review its column mapping, sample headers and per-row failures there; do not guess a deep app URL.
 
 Your job over the API is the preparation and the verification, not the load itself:
 
@@ -27,7 +29,7 @@ Hand them that attribute list before they build the file: a header that matches 
 
 ## The data is already in your program: loop `records upsert`
 
-When the records come from a database query, another API, or a file you have already parsed, there is nothing to upload and nothing to route. Write them one at a time. `upsert` is idempotent (create-or-update by identity), so a rerun repairs a partial load instead of duplicating it.
+When the records come from a database query, another API, or a file you have already parsed, there is nothing to upload and nothing to route. Write them one at a time. `upsert` creates or updates by identity. Keep per-row progress and stable operation keys so retries do not repeat a logical write's side effects.
 
 ```bash
 maxclicks records upsert students \
@@ -37,18 +39,22 @@ maxclicks records upsert students \
 
 ```ts
 import { Maxclicks } from 'maxclicks'
-const mc = new Maxclicks(process.env.MAXCLICKS_API_KEY!)
+const mc = new Maxclicks({
+  apiKey: process.env.MAXCLICKS_API_KEY,
+  onWarning: (warnings, context) => console.warn(context.path, warnings),
+})
 
 for (const row of rows) {
-  const { warnings } = await mc.records.upsert('students', row)
-  if (warnings?.length) console.warn(row.email, warnings)
+  await mc.records.upsert('students', row, {
+    idempotencyKey: `migration-2026-09-${row.email}`,
+  })
   await new Promise((resolve) => setTimeout(resolve, 50))   // stay under the write limit
 }
 ```
 
 Two limits decide how fast the loop may run:
 
-- **25 writes per second, per API key.** Every non-`GET` request shares one `write` bucket. Exceeding it returns `429` with a `Retry-After` header (an HTTP date, UTC). Pace the loop at roughly 20 per second and honour `Retry-After` instead of retrying blind.
+- **25 writes per second, per API key.** Every non-`GET` request shares one `write` bucket. Exceeding it returns `429` with a `Retry-After` header (seconds or an HTTP date). Pace the loop at roughly 20 per second and honour `Retry-After` instead of retrying blind.
 - **Credits are checked per record.** If the schema has any AI auto-fill attribute, each `create`/`upsert` runs a credit check, and running out fails that record with `402 insufficient_credits`. On a long load, treat a 402 as stop-and-report: the remaining rows will all fail the same way.
 
 ## Gotchas

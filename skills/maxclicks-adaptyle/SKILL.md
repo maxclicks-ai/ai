@@ -11,6 +11,8 @@ allowed-tools: Bash Read
 
 # Authoring Adaptyle email content in maxclicks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill (auth, tool choice, data model), the `maxclicks-templates` skill (reading a template's send contract) and the `maxclicks-email` skill (sending). This skill is the content language itself: how to write a template's `subject` and `body` so that Liquid inserts real data deterministically and an LLM personalizes the parts that need judgment.
 
 ## 1. What this covers, and where the content lives

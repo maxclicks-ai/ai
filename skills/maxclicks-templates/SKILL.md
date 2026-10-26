@@ -5,6 +5,8 @@ description: Read a maxclicks email template and send it with a matching data pa
 
 # Reading and sending maxclicks templates
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill (read it first). A **template** is a stored, reusable message definition: email content plus the data shape it expects (`expectedDataRepresentation`), the recipient path, sender, and topic.
 
 **Templates are authored in the maxclicks app** (`https://app.maxclicks.ai`), where the editor's preview and render pipeline validates the content before it can ever be sent. The API's job is the other half: **find a template, read its send contract, and send it**. That is three operations, `list`, `get`, and `send`, and they compose into one loop worth learning properly.
@@ -116,4 +118,4 @@ So when a task needs a template that does not exist yet, or an existing one chan
 - **Sending mutates the records in the payload.** Every record property in `--data` is upserted by identity as a side effect before rendering. Keep the payload to identifiers plus fields you actually intend to persist.
 - **`content` reads back raw even for app-visual templates.** Do not treat that raw text as an editing surface; there is no way to write it back through this API.
 - **Errors to expect**: `template_not_found` (404) on `get`/`send`; `invalid_data` (400) and `template_not_sendable` (400) on `send`, plus the eligibility set (`email_limit_reached` 402, `sending_disabled`/`domain_not_verified`/`marketing_requires_contact`/`recipient_not_subscribed`/`recipient_suppressed` 422). See `maxclicks-email`.
-- **`send` accepts an `Idempotency-Key`.** It is one of only seven operations that do, so use it when a retry after a network timeout would otherwise risk a duplicate email.
+- **`send` accepts an `Idempotency-Key`.** Keep it and the payload unchanged for retries. Recorded errors may replay; a failed or unknown provider outcome does not make a replacement send safe. Preserve emailId and reconcile first.

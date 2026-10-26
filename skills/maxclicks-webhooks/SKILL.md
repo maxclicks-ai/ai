@@ -5,6 +5,8 @@ description: Create, list, update, delete, or rotate maxclicks outgoing webhooks
 
 # maxclicks outgoing webhooks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Manage outgoing webhooks that stream maxclicks events (contact/object/event/email changes) to an external URL, and verify the deliveries you receive. This builds on the `maxclicks` skill, which covers auth (`maxclicks whoami`, `MAXCLICKS_API_KEY`), the schema-based data model, and the CLI/SDK/API tools. Read that first if you have not.
 
 ## Create a webhook
@@ -17,7 +19,7 @@ A webhook needs a `url`, a `trigger`, and (for every trigger except `email event
 - `emailEventTypes` (array): required and non-empty, and only used, when `trigger` is `email event`. The values are `scheduled`, `sending failed`, `sent`, `rejected`, `unsubscribed`, `bounced`, `complained`, `delivered`, `opened`, `clicked`, `delivery delayed` (past tense, note: `bounced` not `bounce`).
 - `condition`: one of `{ "type": "none" }` (default), `{ "type": "segment", "segmentId": "<id>" }` (see `maxclicks-segments` for creating one), or `{ "type": "custom filter", "requirements": "<plain-English filter>" }`. The third form is AI-generated server-side, same contract as segments; see the `maxclicks` skill's `references/requirements.md` for how to phrase it. The generated check expression is never returned; on `get`/`list` a custom filter reduces to `{ "type": "custom filter", "description": "<human-readable summary>" }`.
 
-The response includes `signatureVerificationSecret`. **This secret is returned on create and rotate ONLY**, never by `get` or `list`. Save it immediately (into your endpoint's env/secret store): you will need it to verify deliveries, and losing it means rotating.
+The response includes `signatureVerificationSecret` on create/rotate and their idempotent replays; normal get/list does not return it. Save it in your endpoint's secret store and protect replay bodies. Losing it without an available original replay requires rotation.
 
 ### CLI
 
@@ -68,7 +70,7 @@ const webhook = await mc.webhooks.create({
   condition: { type: 'none' },
 })
 
-// Persist this now: it is never returned again.
+// Persist securely; get/list never return it, and replay bodies are also secret.
 saveSecret(webhook.signatureVerificationSecret)
 ```
 
@@ -135,7 +137,7 @@ Verify against the **raw** request body bytes (do not re-serialize the parsed JS
 
 ## Gotchas
 
-- **The signing secret is shown once,** on `create` and `rotate-secret` only. `get`/`list` never return it. Save it on receipt; if lost, `rotate-secret` and re-store. Neither `create` nor `rotate-secret` is Idempotency-Key aware, because both return a fresh secret.
+- **Signing secrets appear on create/rotate responses and their idempotent replays.** Normal get/list never returns them. Both writes support Idempotency-Key on the REST server; current client helpers may not expose it. Store secrets securely, including replayed responses.
 - **The signature covers `<id>.<timestamp>.<body>`, not the body alone,** and the header value is prefixed `v1,`. Compare the whole `v1,<hex>` string, constant-time.
 - **Email event type values are past tense** (`bounced`, `complained`, `delivered`, `opened`, `clicked`, ...). `bounce` or `complaint` is rejected as invalid.
 - **`schemaId` is required for every trigger except `email event`,** and accepts a schema id or slug. `emailEventTypes` is required and used only for `trigger: email event`.

@@ -5,6 +5,8 @@ description: Point a maxclicks broadcast at its audience, schedule or send it, a
 
 # Scheduling, sending, and measuring broadcasts in maxclicks
 
+**Coverage:** read the `maxclicks` entry skill for current REST coverage and client limits.
+
 Builds on the `maxclicks` skill (read it first) and, for the audience, the `maxclicks-segments` skill. A **broadcast** is a one-shot mass email to a contact schema's audience.
 
 **Broadcasts are built in the maxclicks app** (`https://app.maxclicks.ai`): the contact schema, the email content, and any AI-generated custom audience filter are all authored there, where a human previews the content and reviews the audience condition before it drives a send to thousands of people. Over the API you do the operational half: **retarget, schedule, send, and measure**. Six operations, `list`, `get`, `update`, `send`, `runs`, `metrics`.
