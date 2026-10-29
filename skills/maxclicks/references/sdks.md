@@ -1,16 +1,16 @@
 # maxclicks SDKs
 
-maxclicks publishes eight language clients plus a separate browser client. They cover an earlier public operation set; the current REST contract adds event readiness, server-side identity changes, deletion-status polling and workflow-history cursor fields that are not fully represented by existing clients. Match examples to the actual installed version, not just the OpenAPI version string.
+maxclicks publishes eight language clients plus a separate browser client. The Node client (`maxclicks` 1.1.0) follows the current REST contract, including event readiness, server-side identity changes, record-deletion status and workflow-history paging. The other language clients cover an earlier operation set, so match their examples to the installed version, not just the OpenAPI version string.
 
-**Installation:** `npm install maxclicks` for Node and `npm install @maxclicks/browser` for the browser; the CLI is `maxclicks-cli` and the MCP server `maxclicks-mcp`. The registry names below are each language's package. Contract parity still varies between clients, so check a client's methods before use. `@maxclicks/ai` is private skill/plugin content, not a runtime AI SDK.
+**Installation:** `npm install maxclicks` for Node and `npm install @maxclicks/browser` for the browser; `npm install -g maxclicks-cli` for the CLI, and `npx -y maxclicks-mcp` runs the MCP server locally. The registry names below are each language's package. Contract parity still varies between clients, so check a client's methods before use. `@maxclicks/ai` is private skill/plugin content, not a runtime AI SDK.
 
 Use application-language code or direct HTTP; do not shell out to the CLI from an application. For the current wire contract, `references/api-reference.md` takes precedence over an older SDK return type.
 
 ## Differences to check before using a client
 
-- The REST server supports `Idempotency-Key` on 17 operations. Node source exposes `options.idempotencyKey` on seven: record create/upsert, suppression batch create/delete, template send, broadcast send and workflow trigger. Other clients expose different subsets; inspect their method signatures. Direct HTTP covers supported server operations that lack a client option.
-- Template sends return `emailId`, `status` and `error`; HTTP 200 `failed` can include unknown provider outcomes, so preserve the original operation and reconcile before a replacement send. PHP/Ruby wrappers discard the send body. Current Node types may not express every nullable field of the newer wire contract.
-- Node event methods exist but their receipt types are older. There is no Node `events.status`, `eventIdentities` or `records.getDeletion` method, and no workflow-history cursor option. Use direct HTTP for those newer capabilities.
+- The REST server accepts `Idempotency-Key` on 18 operations and requires it on `templates.send` and `records.delete`. The Node client accepts `{ idempotencyKey }` on all 18 and generates a key for those two when none is passed; a generated key covers only that call's own retries, so pass your own when you may retry later. Other clients expose different subsets; inspect their method signatures. Direct HTTP covers supported server operations that lack a client option.
+- Template sends return `emailId`, `status` and `error`; HTTP 200 `failed` can include unknown provider outcomes, so preserve the original operation and reconcile before a replacement send. PHP/Ruby wrappers discard the send body.
+- Node `events.fire` returns the acceptance receipt (`id`, `eventId`, `isDuplicate`, `readinessAtAcceptance`); `events.status(schema, id)` reads readiness. `eventIdentities.identify(input)` binds or unbinds a browser identity, `records.delete` returns the deletion operation that `records.getDeletion` and `records.cancelDeletion` follow, and `workflows.getRun(id, runId, { historyBefore })` pages step history.
 - Node warnings are delivered via the `onWarning` callback, not attached to an individual returned record. Event lists preserve their cursor envelope; ordinary offset lists have a `Page` helper and `.all()`, subject to server caps.
 
 ## Node / TypeScript (`maxclicks`, npm)
@@ -132,7 +132,7 @@ Elixir 1.15+. `{:ok, result}` / `{:error, %Maxclicks.Error{}}` with `!` variants
 ## Choosing
 
 - Writing into an app: the SDK for that language.
-- One-off terminal or agent task: direct HTTP, or a source-built `maxclicks` CLI for commands it implements. Public forms/email and newer lifecycle operations have no dedicated CLI command.
-- A host that speaks MCP: a separately built maxclicks MCP server with stdio or Streamable HTTP. Its selected tool catalog does not include the entire current REST contract; hosted availability is not established here.
+- One-off terminal or agent task: the `maxclicks` CLI (`npm install -g maxclicks-cli`) for the commands it implements, or direct HTTP. The public form and email endpoints have no CLI command.
+- A host that speaks MCP: the hosted server at `https://mcp.maxclicks.ai/mcp`, which signs in with OAuth, or `npx -y maxclicks-mcp` over stdio or Streamable HTTP with an API key. Its tool catalog covers selected operations, not the entire REST contract.
 
 All SDKs preserve unknown custom-attribute keys on records and events, so schema-specific fields round-trip even where the SDK has no typed field for them.

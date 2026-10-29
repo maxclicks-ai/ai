@@ -82,7 +82,7 @@ maxclicks records delete students <recordId>
 
 ## Deletion status
 
-A record DELETE returns `{ operationId, status, message }`, not a completed-erasure guarantee. Preserve the complete operation id and poll `GET /record-deletions/{operationId}` until `completed`. `pending` means cleanup remains; `blocked` needs reconciliation. Incomplete operations return HTTP 202. Current Node deletion declarations still use the older shape, so use direct HTTP for this contract.
+A record DELETE returns `{ operationId, status, canCancel, message }`, not a completed-erasure guarantee. It requires an `Idempotency-Key`; the CLI and the Node client generate one when you pass none, and the CLI prints it. Preserve the complete operation id and poll it until `completed`: `maxclicks records deletion-status <operationId>`, `mc.records.getDeletion(operationId)` or `GET /record-deletions/{operationId}`. `pending` means cleanup remains; `blocked` needs reconciliation. Incomplete operations return HTTP 202. While `canCancel` is true, before removal begins, the original requester can stop it with `maxclicks records cancel-deletion <operationId>` or `mc.records.cancelDeletion(operationId)`.
 
 ## Bulk loading
 

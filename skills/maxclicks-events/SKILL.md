@@ -48,7 +48,7 @@ The success envelope contains an immutable receipt:
 
 Save `id` and `eventId`. Retry the same business occurrence with the same `eventId`, normalized payload and explicit `occurredAt` to recover the original receipt (`isDuplicate: true`). Changed input under that id returns `409 event_id_conflict`; erased occurrences return `409 event_erased`. Omitting `eventId` lets the server generate it, which makes recovery after a lost receipt harder. Events do not use `Idempotency-Key`.
 
-The source CLI command is `maxclicks events fire <schema> --data '<json>'`. Node source exposes `mc.events.fire(schema, input)`, but its older result type does not yet describe every receipt field.
+The CLI command is `maxclicks events fire <schema> --data '<json>'`; the Node client's `mc.events.fire(schema, input)` returns the same receipt.
 
 ## Inspect current readiness
 
@@ -59,7 +59,7 @@ curl https://api.maxclicks.ai/v1/events/purchase-completed/ev_example/status \
 
 Replace `ev_example` with the receipt's **maxclicks `id`**, not your `eventId`. `data.readinessState` is `pending`, `ready`, `failed` or `outcome_unknown`. The response includes timestamps, definition revision, subjects and `data`: raw accepted values before readiness, prepared values when ready. The receipt's `readinessAtAcceptance` never changes, even when a retried receipt arrives after preparation.
 
-Current Node/CLI/MCP sources have no dedicated status method/tool. Use this verified REST route. Read a workflow run or delivery record separately when downstream completion matters.
+The Node client's `mc.events.status(schema, id)`, the CLI's `maxclicks events status <schema> <id>` and the MCP tool `get_event_status` read the same route. Read a workflow run or delivery record separately when downstream completion matters.
 
 ## Accept a batch
 
@@ -112,7 +112,7 @@ An event is immutable. PATCH/DELETE guards return `405 events_immutable`; a corr
 
 The browser client exposes `createClient`, consent controls, `track()` and `page()`. `track()` reports local enqueue status; it is not a server receipt or completion signal. Supply a separately provisioned collector base URL serving `/v1/events/config` and `/v1/events/batch`. Do not invent a collector hostname or assume `api.maxclicks.ai` routes those requests. Browser code uses a public observation-only `mxe_` key, never a server API key.
 
-Browser `identify()` calls an authenticated application-backend adapter. That backend binds or unbinds the alias with `POST /event-identities` and a Write-authorized server key. All six fields are required: `sourceId`, contact `subjectSchemaId`, `anonymousId`, `contactId` (or null to unbind), UUID `operationId`, and decimal-string `expectedAliasRevision`. Use `"0"` for a new alias; retain the returned `identityRevision` for its next change. Retry the same operation id and unchanged body, and handle revision conflicts explicitly. The source must match an enabled contact track definition. See the entry skill's API reference for the exact identity contract.
+Browser `identify()` calls an authenticated application-backend adapter. That backend binds or unbinds the alias with `POST /event-identities` (Node: `mc.eventIdentities.identify(input)`) and a Write-authorized server key. All six fields are required: `sourceId`, contact `subjectSchemaId`, `anonymousId`, `contactId` (or null to unbind), UUID `operationId`, and decimal-string `expectedAliasRevision`. Use `"0"` for a new alias; retain the returned `identityRevision` for its next change. Retry the same operation id and unchanged body, and handle revision conflicts explicitly. The source must match an enabled contact track definition. See the entry skill's API reference for the exact identity contract.
 
 ## Operational checks
 

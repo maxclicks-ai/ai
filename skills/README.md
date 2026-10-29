@@ -2,7 +2,7 @@
 
 Agent Skills that teach an AI agent to build on maxclicks. Each folder is one skill: a `SKILL.md` (frontmatter + instructions) plus any `references/`.
 
-They describe the current **Public API v1 source contract: 58 functional operations across 16 resource groups**. The CLI, SDKs and MCP server wrap a smaller surface; the entry skill records what each covers. The organizing principle across every skill: entities are authored in the maxclicks app, and the API triggers, reads and measures them.
+They describe the current **Public API v1 source contract: 59 functional operations across 16 resource groups**. The CLI, SDKs and MCP server wrap a smaller surface; the entry skill records what each covers. The organizing principle across every skill: entities are authored in the maxclicks app, and the API triggers, reads and measures them.
 
 - `maxclicks`: the umbrella skill (auth, the shape of the surface, the data model, CLI/SDK/API map, gotchas, the natural-language `requirements` contract). Start here.
 - `maxclicks-contacts`: manage contacts and objects (records) and read a contact's consent audit trail.

@@ -1,10 +1,10 @@
 # maxclicks API reference (CLI + SDK + HTTP)
 
-The current Public API v1 source contract: **16 resource groups, 58 functional operations**, spec version 1.1.0 (checked 26 September 2026). Base URL `https://api.maxclicks.ai/v1`. Auth: `Authorization: Bearer <api_key>` on everything except the public form/email endpoints.
+The current Public API v1 source contract: **16 resource groups, 59 functional operations**, spec version 1.1.0 (checked 29 October 2026). Base URL `https://api.maxclicks.ai/v1`. Auth: `Authorization: Bearer <api_key>` on everything except the public form/email endpoints.
 
 **The surface follows one principle:** entities are *authored in the maxclicks app*, and the API *triggers, reads and measures* them. Schemas, attributes, templates, broadcast content, domains, senders and topics are created and configured in the app; this API reads them back so a caller can discover ids, shapes and status, and drives the sends and automations that depend on them. (API keys are also minted in the app, and are the one thing this API does not read back: a key is full-permission and inherits the owner's membership.)
 
-**Coverage:** CLI/SDK columns describe the published clients, not complete current response types. The current Node client has no dedicated event-status, event-identity or deletion-status methods, and no workflow-history cursor option. Use HTTP for those contracts. Check each language client's source before translating a method signature.
+**Coverage:** the CLI column describes `maxclicks-cli` 1.0.0 and the SDK column the Node client, `maxclicks` 1.1.0, which follows this contract. Check each other language client's source before translating a method signature.
 
 ## Envelopes and conventions
 
@@ -16,14 +16,15 @@ The current Public API v1 source contract: **16 resource groups, 58 functional o
 - Path values (schema slug, ids) are URL-encoded for you by the CLI and SDKs.
 - `Perm` below is the caller key's minimum space-membership permission (`read` / `write` / `admin`). A key with less returns 403. Only the five suppression operations require `admin`.
 
-## Idempotency: 17 REST operations
+## Idempotency: 18 REST operations
 
-These operations accept `Idempotency-Key` in the current server source:
+These operations accept `Idempotency-Key`; `records.delete` and `templates.send` require it:
 
 | Operation | HTTP |
 | --- | --- |
 | `records.create` | `POST /schemas/{schema}/records` |
 | `records.upsert` | `POST /schemas/{schema}/records/upsert` |
+| `records.delete` | `DELETE /schemas/{schema}/records/{id}` |
 | `suppressions.batchCreate` | `POST /contacts/suppressions/batch` |
 | `suppressions.batchDelete` | `POST /contacts/suppressions/batch-remove` |
 | `suppressions.delete` | `DELETE /contacts/suppressions/{id}` |
@@ -44,9 +45,9 @@ A key is at most 256 characters and belongs to one logical operation. It is scop
 
 Completed operation records expire after 24 hours. Unresolved operations remain for reconciliation and can return `idempotency_outcome_unknown`; preserve any `Operation-Id`, original key and body, and reconcile before starting a replacement operation. Upserting the same identity does not alone prevent repeated side effects.
 
-Event acceptance uses a stable `eventId` instead. Event identity changes use a UUID `operationId` with `expectedAliasRevision`. Record deletion has its own pollable operation id and does not use `Idempotency-Key`.
+Event acceptance uses a stable `eventId` instead. Event identity changes use a UUID `operationId` with `expectedAliasRevision`. Record deletion requires an `Idempotency-Key` that names the deletion attempt and answers with its own pollable `operationId`; it does not replay through the response cache described above.
 
-**Client support is smaller than server support.** Node source exposes `options.idempotencyKey` on `records.create`, `records.upsert`, `suppressions.batchCreate`, `suppressions.batchDelete`, `templates.send`, `broadcasts.send` and `workflows.trigger`. The CLI flag exists on record create/upsert and suppression batch add/remove only. Its raw `api` command cannot add custom headers. Use direct HTTP for another supported server operation or when the installed client lacks the option. Other language clients must be checked individually.
+**Client support.** The Node client accepts `{ idempotencyKey }` on all 18 operations and generates a key for `templates.send` and `records.delete` when none is passed. A generated key covers only the client's own retries of that call; pass your own when you may retry later. The CLI's `--idempotency-key` covers record create, upsert and delete, suppression batch add and remove, template send, broadcast send and workflow trigger; `templates send` and `records delete` print the key they used. Its raw `api` command cannot add custom headers. Other language clients must be checked individually.
 
 ## 1. Meta (1)
 
@@ -84,7 +85,7 @@ Base attributes first, then custom ones. `Attribute` = `{ id, key, label, descri
 
 Attributes are authored in the app. Read them here so your writes only set keys that exist.
 
-## 4. Records: contacts and objects (8)
+## 4. Records: contacts and objects (9)
 
 | Op | CLI | SDK | HTTP | Perm |
 | --- | --- | --- | --- | --- |
@@ -93,15 +94,16 @@ Attributes are authored in the app. Read them here so your writes only set keys 
 | Create | `maxclicks records create <schema> --data '<json>' [--idempotency-key <key>]` | `records.create(schema, input)` | `POST /schemas/{schema}/records` (201, Idem) | write |
 | Upsert | `maxclicks records upsert <schema> --data '<json>' [--idempotency-key <key>]` | `records.upsert(schema, input)` | `POST /schemas/{schema}/records/upsert` (Idem) | write |
 | Update | `maxclicks records update <schema> <id> --data '<json>'` | `records.update(schema, id, input)` | `PATCH /schemas/{schema}/records/{id}` | write |
-| Delete | `maxclicks records delete <schema> <id>` | `records.delete(schema, id)` | `DELETE /schemas/{schema}/records/{id}` | write |
+| Delete | `maxclicks records delete <schema> <id> [--idempotency-key <key>]` | `records.delete(schema, id, { idempotencyKey })` | `DELETE /schemas/{schema}/records/{id}` (Idem required) | write |
 | Audit trail | `maxclicks records audit-trail <schema> <id> [--channel email] [--all]` | `records.auditTrail(schema, id, { channel, limit, offset })` | `GET /schemas/{schema}/records/{id}/audit-trail` | read |
-| Deletion status | HTTP | HTTP | `GET /record-deletions/{operationId}` | read |
+| Deletion status | `maxclicks records deletion-status <operationId>` | `records.getDeletion(operationId)` | `GET /record-deletions/{operationId}` | read |
+| Cancel deletion | `maxclicks records cancel-deletion <operationId>` | `records.cancelDeletion(operationId)` | `POST /record-deletions/{operationId}/cancel` | write |
 
 Records are **flat**: `{ id?, email, firstName, lastName, fullName, avatarUrl, userId, phone, notes, tags: [...], subscriptions: ["email"], topicIds: [...], <customKey>: <value> }` for contacts; `{ externalId, notes, tags, <customKey> }` for objects. There is no `data`/`attributes`/`properties` wrapper.
 
 `create` fails when the identity already exists; `upsert` matches by `id > userId > email > phone` (contact) or `id > externalId` (object). `update`/`upsert` with an explicit `null` clears a nullable field; omit a key to leave it unchanged. `source`, `subscriptions` and `emailStatistics` are platform-managed and not settable. Conflicting identifier updates on `upsert` are skipped and reported in `warnings` rather than failing the call. Audit trail is contacts only, newest first, and strips `ipAddress`/`userAgent` from the returned `context`.
 
-**Deletion is asynchronous.** Preserve `{ operationId, status, message }` from DELETE, then poll `GET /record-deletions/{operationId}` using the URL-encoded full operation id until `status` is `completed`. `pending` means cleanup remains; `blocked` needs reconciliation. HTTP 202 indicates an incomplete operation; a 2xx alone does not establish erasure. Current Node `records.delete` declarations still describe the older response; use direct HTTP for the current contract.
+**Deletion is asynchronous.** The `Idempotency-Key` is 1 to 128 characters: a leading letter or digit, then letters, digits, `_`, `.`, `:` or `-`. Preserve it and `{ operationId, status, canCancel, message }` from DELETE, then poll `GET /record-deletions/{operationId}` using the URL-encoded full operation id until `status` is `completed`. `pending` means cleanup remains; `blocked` needs reconciliation. HTTP 202 indicates an incomplete operation and 200 a completed one; a 2xx alone does not establish erasure. A retried DELETE after completion can return 404, so keep the operation id. Only the original requester, with current write permission, can cancel, and only while `canCancel` is true, before removal begins; after that, cancel returns 409. Poll until `cancelled`, and use a new key for a later deletion of the same record.
 
 ## 5. Suppressions (5, admin key)
 
@@ -124,8 +126,8 @@ Batch bodies are **wrapped objects, not bare arrays**: `{ "suppressions": [{ ide
 | List ready events | `maxclicks events list --schema <schema>` / `events.list({ schema, from, to, cursor, limit })` | `GET /events?schema=<id-or-slug>` | read |
 | Accept one event | `maxclicks events fire <schema> --data '<json>'` / `events.fire(schema, input)` | `POST /events/{schema}` | write |
 | Accept batch | `maxclicks events fire-batch <schema> --data '<json-array>'` / `events.fireBatch(schema, events, { onError })` | `POST /events/{schema}/batch` | write |
-| Current readiness | Direct HTTP; no current Node/CLI/MCP wrapper | `GET /events/{schema}/{id}/status` | read |
-| Bind/unbind browser identity | Direct HTTP; no current Node/CLI/MCP wrapper | `POST /event-identities` | write |
+| Current readiness | `maxclicks events status <schema> <id>` / `events.status(schema, id)` | `GET /events/{schema}/{id}/status` | read |
+| Bind/unbind browser identity | `maxclicks events identify --data '<json>'` / `eventIdentities.identify(input)` | `POST /event-identities` | write |
 
 Server event input is flat: `{ eventId?, occurredAt?, contactId?, objectId?, <customKey> }`. `contactId` and `objectId` are mutually exclusive subjects; any `id` on input is ignored. Normalized input is capped at 256 KiB. `occurredAt` must be within the previous 366 days or five minutes into the future.
 
@@ -263,11 +265,11 @@ On read a webhook is `{ id, createdAt, updatedAt, url, trigger, emailEventTypes,
 | Pause | `maxclicks workflows pause <id>` | `workflows.pause(id)` | `POST /workflows/{id}/pause` | write |
 | Unpause | `maxclicks workflows unpause <id>` | `workflows.unpause(id)` | `POST /workflows/{id}/unpause` | write |
 | List runs | `maxclicks workflows runs <id> [--all]` | `workflows.listRuns(id, { limit, offset })` | `GET /workflows/{id}/runs` | read |
-| Get run | `maxclicks workflows get-run <id> <runId>` | `workflows.getRun(id, runId)` | `GET /workflows/{id}/runs/{runId}` | read |
+| Get run | `maxclicks workflows get-run <id> <runId>` | `workflows.getRun(id, runId, { historyBefore })` | `GET /workflows/{id}/runs/{runId}` | read |
 
 Workflows are **built in the app**: there is no create-workflow, add-step or edit-step endpoint, and no delete. The API triggers, observes, and pauses an already-published workflow.
 
-`Workflow` = `{ id, createdAt, updatedAt, name, description, paused, isDirty, published }` (`isDirty` means it has unpublished changes). `WorkflowRun` includes status, version, failure reason and a bounded `stepHistory` window (at most 100 rows). Each history row has an `index`; `stepCount`, parent-run fields and `nextHistoryBeforeIndex` provide additional context. Pass the non-null cursor as `history_before` to GET run to inspect older history. A failed run can have a null `failureReason` in a window that omits the failed step. Current client declarations/options do not fully expose this contract.
+`Workflow` = `{ id, createdAt, updatedAt, name, description, paused, isDirty, published }` (`isDirty` means it has unpublished changes). `WorkflowRun` includes status, version, failure reason and a bounded `stepHistory` window (at most 100 rows). Each history row has an `index`; `stepCount`, parent-run fields and `nextHistoryBeforeIndex` provide additional context. Pass the non-null cursor as `history_before` to GET run to inspect older history. A failed run can have a null `failureReason` in a window that omits the failed step. The Node client passes it as `workflows.getRun(id, runId, { historyBefore })`; the CLI reads only the newest window.
 
 `trigger`'s path segment is the **incoming-webhook step's `workflowStepReference`**, not a workflow id. The body is arbitrary JSON validated server-side against that step's configured JSON schema, and the response `data` is an empty object. It needs `write` permission (the run it starts can send email, spend credits, call AI, mutate records, and issue outbound HTTP requests) and it supports `Idempotency-Key`, which is the right way to make a retried external webhook delivery safe.
 

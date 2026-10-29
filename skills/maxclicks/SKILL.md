@@ -17,7 +17,7 @@ maxclicks is an AI-first email, CRM, and workflow-automation platform. This skil
 
 ## The shape of the API (internalize this first)
 
-The current source contract documents **58 functional operations across 16 resource groups** (26 September 2026). SDK, CLI and MCP coverage is smaller; a shared version number does not prove parity. The authoring boundary is:
+The current source contract documents **59 functional operations across 16 resource groups** (29 October 2026). SDK, CLI and MCP coverage is smaller; a shared version number does not prove parity. The authoring boundary is:
 
 > **Entities are authored in the maxclicks app. The API triggers, reads, and measures them.**
 
@@ -31,7 +31,7 @@ Use `references/api-reference.md` as the verified operation map and check the cu
 
 **Installation:** `npm install maxclicks` for Node, `npm install @maxclicks/browser` for the browser and `npm install -g maxclicks-cli` for the CLI. The MCP server is hosted at `https://mcp.maxclicks.ai/mcp` and also runs locally with `npx -y maxclicks-mcp`. `@maxclicks/ai` contains private skill/plugin source, not a runtime AI SDK.
 
-1. **REST:** use `https://api.maxclicks.ai/v1` and the verified HTTP map for the current contract, particularly event readiness, identity changes, record-deletion status and paged workflow history.
+1. **REST:** use `https://api.maxclicks.ai/v1` and the verified HTTP map for the current contract.
 2. **CLI/SDK:** CLI commands below describe the published CLI. They do not cover every current REST operation. Application code should use the project's language client only after checking its actual exported methods and response types; see `references/sdks.md`.
 3. **MCP:** connect a client to `https://mcp.maxclicks.ai/mcp`, where it signs in with OAuth and the user chooses one workspace and the permissions to grant, or run it locally over stdio or Streamable HTTP with an API key. Its tools cover selected operations, not the whole REST API. Mutating tools perform real writes/sends; the host decides tool exposure and approval behavior.
 
@@ -57,7 +57,7 @@ maxclicks is **schema-based**. Every contact, object, and event belongs to a **s
 
 ## CLI command map
 
-This map describes the CLI. Offset-based list commands use `--limit`/`--offset`; `--all` walks available pages up to the server's traversal cap. Event lists use cursors. Full endpoint, field and error reference: `references/api-reference.md`.
+This map describes the CLI. `templates send` and `records delete` always send an idempotency key, generating one when none is passed; retry a timed-out call with the printed `idempotencyKey`. Offset-based list commands use `--limit`/`--offset`; `--all` walks available pages up to the server's traversal cap. Event lists use cursors. Full endpoint, field and error reference: `references/api-reference.md`.
 
 ```
 maxclicks whoami
@@ -73,11 +73,15 @@ maxclicks records get <schema> <id>
 maxclicks records create <schema> --data '<json>' [--idempotency-key <key>]
 maxclicks records upsert <schema> --data '<json>' [--idempotency-key <key>]
 maxclicks records update <schema> <id> --data '<json>'
-maxclicks records delete <schema> <id>
+maxclicks records delete <schema> <id> [--idempotency-key <key>]         # prints the deletion operation
+maxclicks records deletion-status <operationId>
+maxclicks records cancel-deletion <operationId>
 maxclicks records audit-trail <schema> <id> [--channel email] [--all]     # contacts only
 
 maxclicks events fire <schema> --data '<json>'
 maxclicks events fire-batch <schema> --data '<json-array>' [--on-error abort]
+maxclicks events status <schema> <id>                                     # readiness of an accepted event
+maxclicks events identify --data '<json>'                                 # bind an anonymous browser identity
 maxclicks events list --schema <schema> [--from <iso>] [--to <iso>] [--cursor <c>] [--all]
 
 maxclicks segments list [--all]
@@ -88,13 +92,13 @@ maxclicks segments delete <id>
 maxclicks broadcasts list [--all]
 maxclicks broadcasts get <id>
 maxclicks broadcasts update <id> --data '<json>'        # name/description/audience/scheduledFor only
-maxclicks broadcasts send <id> [--data '{"scheduledFor":"<iso>"}']
+maxclicks broadcasts send <id> [--data '{"scheduledFor":"<iso>"}'] [--idempotency-key <key>]
 maxclicks broadcasts runs <id> [--all]
 maxclicks broadcasts metrics <id>
 
 maxclicks templates list [--all]
 maxclicks templates get <id>
-maxclicks templates send <templateId> --data '<json>'
+maxclicks templates send <templateId> --data '<json>' [--idempotency-key <key>]   # prints the key it used
 
 maxclicks webhooks list|get|create|update|delete|rotate-secret ...
 
@@ -105,7 +109,7 @@ maxclicks suppressions batch-add --data '<json>' [--idempotency-key <key>]
 maxclicks suppressions batch-remove --data '<json>' [--idempotency-key <key>]
 
 maxclicks workflows list|get <id>
-maxclicks workflows trigger <reference> --data '<json>'
+maxclicks workflows trigger <reference> --data '<json>' [--idempotency-key <key>]
 maxclicks workflows runs <id> [--all]
 maxclicks workflows get-run <id> <runId>
 maxclicks workflows pause|unpause <id>

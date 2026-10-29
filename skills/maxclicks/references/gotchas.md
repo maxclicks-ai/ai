@@ -4,7 +4,7 @@ Non-obvious facts that will bite you if you assume otherwise. Read before any no
 
 ## The surface
 
-- **The current source contract has 58 functional operations across 16 groups.** Client coverage differs; check the entry skill before using a CLI/SDK example. Use the matching server/OpenAPI source for newer operations rather than guessing routes.
+- **The current source contract has 59 functional operations across 16 groups.** Client coverage differs; check the entry skill before using a CLI/SDK example. Use the matching server/OpenAPI source for newer operations rather than guessing routes.
 - **Entities are authored in the app; the API triggers, reads and measures them.** Schemas, attributes, templates, broadcast content, domains, senders, topics and API keys are configured at `https://app.maxclicks.ai`. When a task calls for one of those, hand that half to the user and pick the work back up with a read (an API key is the one exception with nothing to read back). Do not report the feature as missing: it exists, it just lives on the other side.
 - **Reads are not decoration.** `schemas list`, `attributes list`, `templates get`, `domains list`, `senders list` and `topics list` exist precisely so you can discover ids, keys and readiness before writing or sending.
 
